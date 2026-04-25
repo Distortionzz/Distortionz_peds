@@ -14,6 +14,36 @@ local isDoingHandoff = false
 local isDoingContactHandoff = false
 local deliveryEndsAt = nil
 
+local function Notify(message, notifyType, duration, title, soundEnabled)
+    if not message then return end
+
+    notifyType = notifyType or "primary"
+    duration = tonumber(duration) or 5000
+    title = title or "Distortionz Underground"
+
+    if notifyType == "inform" then
+        notifyType = "info"
+    end
+
+    if GetResourceState("distortionz_notify") == "started" then
+        exports["distortionz_notify"]:Notify(
+            message,
+            notifyType,
+            duration,
+            title,
+            soundEnabled
+        )
+        return
+    end
+
+    lib.notify({
+        title = title,
+        description = message,
+        type = notifyType,
+        duration = duration
+    })
+end
+
 local function DrawText3D(x, y, z, text)
     SetTextScale(0.35, 0.35)
     SetTextFont(4)
@@ -275,65 +305,71 @@ local function OpenIllegalMenu()
             deliveryText = "Active delivery. Time left: " .. FormatSeconds(remaining)
         end
 
-        exports['qb-menu']:openMenu({
-            {
-                header = "Underground Contact",
-                txt = GetMenuVersionText() .. " | Rep: " .. repData.label .. " (" .. repData.rep .. ")",
-                isMenuHeader = true
-            },
-            {
-                header = "Mini Market",
-                txt = miniMarketText,
-                icon = "fas fa-store",
-                disabled = (cooldowns.sell or 0) > 0,
-                params = {
-                    event = "distortionz_peds:client:openSellMenu"
-                }
-            },
-            {
-                header = "Suspicious Delivery",
-                txt = deliveryText,
-                icon = "fas fa-box",
-                disabled = activeDelivery or isDoingContactHandoff or ((cooldowns.delivery or 0) > 0),
-                params = {
-                    event = "distortionz_peds:client:startSuspiciousDelivery"
-                }
-            },
-            {
-                header = "Cancel Delivery",
-                txt = activeDelivery and "Cancel your current job." or "No active delivery.",
-                icon = "fas fa-ban",
-                disabled = not activeDelivery,
-                params = {
-                    event = "distortionz_peds:client:cancelDelivery"
-                }
-            },
-            {
-                header = "Black Market",
-                txt = blackMarketText,
-                icon = "fas fa-user-secret",
-                disabled = (cooldowns.blackmarket or 0) > 0,
-                params = {
-                    event = "distortionz_peds:client:openBlackMarket"
-                }
-            },
-            {
-                header = "Street Work",
-                txt = "More street jobs coming soon.",
-                icon = "fas fa-map-location-dot",
-                params = {
-                    event = "distortionz_peds:client:streetWork"
-                }
-            },
-            {
-                header = "Leave",
-                txt = "Walk away.",
-                icon = "fas fa-xmark",
-                params = {
-                    event = "qb-menu:closeMenu"
+        lib.registerContext({
+            id = "distortionz_main_menu",
+            title = "Underground Contact",
+            options = {
+                {
+                    title = GetMenuVersionText(),
+                    description = "Rep: " .. repData.label .. " (" .. repData.rep .. ")",
+                    icon = "id-card",
+                    disabled = true
+                },
+                {
+                    title = "Mini Market",
+                    description = miniMarketText,
+                    icon = "store",
+                    disabled = (cooldowns.sell or 0) > 0,
+                    onSelect = function()
+                        TriggerEvent("distortionz_peds:client:openSellMenu")
+                    end
+                },
+                {
+                    title = "Suspicious Delivery",
+                    description = deliveryText,
+                    icon = "box",
+                    disabled = activeDelivery or isDoingContactHandoff or ((cooldowns.delivery or 0) > 0),
+                    onSelect = function()
+                        TriggerEvent("distortionz_peds:client:startSuspiciousDelivery")
+                    end
+                },
+                {
+                    title = "Cancel Delivery",
+                    description = activeDelivery and "Cancel your current job." or "No active delivery.",
+                    icon = "ban",
+                    disabled = not activeDelivery,
+                    onSelect = function()
+                        TriggerEvent("distortionz_peds:client:cancelDelivery")
+                    end
+                },
+                {
+                    title = "Black Market",
+                    description = blackMarketText,
+                    icon = "user-secret",
+                    disabled = (cooldowns.blackmarket or 0) > 0,
+                    onSelect = function()
+                        TriggerEvent("distortionz_peds:client:openBlackMarket")
+                    end
+                },
+                {
+                    title = "Street Work",
+                    description = "More street jobs coming soon.",
+                    icon = "map-location-dot",
+                    onSelect = function()
+                        TriggerEvent("distortionz_peds:client:streetWork")
+                    end
+                },
+                {
+                    title = "Leave",
+                    description = "Walk away.",
+                    icon = "xmark",
+                    onSelect = function()
+                    end
                 }
             }
         })
+
+        lib.showContext("distortionz_main_menu")
 
         SetTimeout(500, function()
             menuOpen = false
@@ -343,11 +379,12 @@ end
 
 local function OpenSellMenu()
     QBCore.Functions.TriggerCallback("distortionz_peds:server:getSellInventory", function(inventoryCounts)
-        local sellMenu = {
+        local options = {
             {
-                header = "Mini Market",
-                txt = GetMenuVersionText(),
-                isMenuHeader = true
+                title = GetMenuVersionText(),
+                description = "Sell valuables, electronics, cards, and rare goods.",
+                icon = "store",
+                disabled = true
             }
         }
 
@@ -358,42 +395,45 @@ local function OpenSellMenu()
                 playerAmount = inventoryCounts[itemName]
             end
 
-            local menuText = "You have: " .. playerAmount .. " | $" .. itemData.minPrice .. " - $" .. itemData.maxPrice .. " each"
-
-            sellMenu[#sellMenu + 1] = {
-                header = itemData.label,
-                txt = menuText,
-                icon = "fas fa-dollar-sign",
+            options[#options + 1] = {
+                title = itemData.label,
+                description = "You have: " .. playerAmount .. " | $" .. itemData.minPrice .. " - $" .. itemData.maxPrice .. " each",
+                icon = "dollar-sign",
                 disabled = playerAmount <= 0,
-                params = {
-                    event = "distortionz_peds:client:sellItem",
-                    args = {
+                onSelect = function()
+                    TriggerEvent("distortionz_peds:client:sellItem", {
                         item = itemName,
                         amountOwned = playerAmount
-                    }
-                }
+                    })
+                end
             }
         end
 
-        sellMenu[#sellMenu + 1] = {
-            header = "Back",
-            txt = "Return to underground contact menu.",
-            icon = "fas fa-arrow-left",
-            params = {
-                event = "distortionz_peds:client:openIllegalMenu"
-            }
+        options[#options + 1] = {
+            title = "Back",
+            description = "Return to underground contact menu.",
+            icon = "arrow-left",
+            onSelect = function()
+                TriggerEvent("distortionz_peds:client:openIllegalMenu")
+            end
         }
 
-        sellMenu[#sellMenu + 1] = {
-            header = "Close",
-            txt = "Walk away.",
-            icon = "fas fa-xmark",
-            params = {
-                event = "qb-menu:closeMenu"
-            }
+        options[#options + 1] = {
+            title = "Close",
+            description = "Walk away.",
+            icon = "xmark",
+            onSelect = function()
+            end
         }
 
-        exports['qb-menu']:openMenu(sellMenu)
+        lib.registerContext({
+            id = "distortionz_sell_menu",
+            title = "Mini Market",
+            menu = "distortionz_main_menu",
+            options = options
+        })
+
+        lib.showContext("distortionz_sell_menu")
     end)
 end
 
@@ -401,55 +441,59 @@ local function OpenBlackMarket()
     QBCore.Functions.TriggerCallback("distortionz_peds:server:getPlayerRep", function(repData)
         repData = repData or { level = 0, label = "Unknown", rep = 0 }
 
-        local menu = {
+        local options = {
             {
-                header = "Black Market",
-                txt = "Rep: " .. repData.label .. " | Level " .. repData.level,
-                isMenuHeader = true
+                title = "Black Market",
+                description = "Rep: " .. repData.label .. " | Level " .. repData.level,
+                icon = "user-secret",
+                disabled = true
             }
         }
 
         for itemName, itemData in pairs(Config.BlackMarket.items) do
             local locked = repData.level < itemData.requiredLevel
-            local txt = "$" .. itemData.price .. " | Required Level: " .. itemData.requiredLevel
+            local description = "$" .. itemData.price .. " | Required Level: " .. itemData.requiredLevel
 
             if locked then
-                txt = "Locked | Required Level: " .. itemData.requiredLevel
+                description = "Locked | Required Level: " .. itemData.requiredLevel
             end
 
-            menu[#menu + 1] = {
-                header = itemData.label,
-                txt = txt,
-                icon = locked and "fas fa-lock" or "fas fa-cart-shopping",
+            options[#options + 1] = {
+                title = itemData.label,
+                description = description,
+                icon = locked and "lock" or "cart-shopping",
                 disabled = locked,
-                params = {
-                    event = "distortionz_peds:client:buyBlackMarketItem",
-                    args = {
-                        item = itemName
-                    }
-                }
+                onSelect = function()
+                    TriggerServerEvent("distortionz_peds:server:buyBlackMarketItem", itemName)
+                end
             }
         end
 
-        menu[#menu + 1] = {
-            header = "Back",
-            txt = "Return to underground contact menu.",
-            icon = "fas fa-arrow-left",
-            params = {
-                event = "distortionz_peds:client:openIllegalMenu"
-            }
+        options[#options + 1] = {
+            title = "Back",
+            description = "Return to underground contact menu.",
+            icon = "arrow-left",
+            onSelect = function()
+                TriggerEvent("distortionz_peds:client:openIllegalMenu")
+            end
         }
 
-        menu[#menu + 1] = {
-            header = "Close",
-            txt = "Walk away.",
-            icon = "fas fa-xmark",
-            params = {
-                event = "qb-menu:closeMenu"
-            }
+        options[#options + 1] = {
+            title = "Close",
+            description = "Walk away.",
+            icon = "xmark",
+            onSelect = function()
+            end
         }
 
-        exports['qb-menu']:openMenu(menu)
+        lib.registerContext({
+            id = "distortionz_black_market",
+            title = "Black Market",
+            menu = "distortionz_main_menu",
+            options = options
+        })
+
+        lib.showContext("distortionz_black_market")
     end)
 end
 
@@ -484,7 +528,7 @@ local function PlayContactHandoffAnimation()
     TaskPlayAnim(spawnedPed, animDict, animName, 8.0, -8.0, duration, 0, 0, false, false, false)
     TaskPlayAnim(playerPed, animDict, animName, 8.0, -8.0, duration, 0, 0, false, false, false)
 
-    QBCore.Functions.Notify(Config.Delivery.contactHandoff.text, "primary", duration)
+    Notify(Config.Delivery.contactHandoff.text, "primary", duration)
 
     Wait(duration)
 
@@ -536,7 +580,7 @@ local function StartHandoffAnimation()
 
     TaskPlayAnim(playerPed, animDict, animName, 8.0, -8.0, duration, 0, 0, false, false, false)
 
-    QBCore.Functions.Notify(Config.Delivery.handoff.text, "primary", duration)
+    Notify(Config.Delivery.handoff.text, "primary", duration)
 
     Wait(duration)
 
@@ -737,11 +781,6 @@ RegisterNetEvent("distortionz_peds:client:openBlackMarket", function()
     OpenBlackMarket()
 end)
 
-RegisterNetEvent("distortionz_peds:client:buyBlackMarketItem", function(data)
-    if not data or not data.item then return end
-    TriggerServerEvent("distortionz_peds:server:buyBlackMarketItem", data.item)
-end)
-
 RegisterNetEvent("distortionz_peds:client:sellItem", function(data)
     if not data or not data.item then return end
 
@@ -749,7 +788,7 @@ RegisterNetEvent("distortionz_peds:client:sellItem", function(data)
     local itemData = Config.SellItems[itemName]
 
     if not itemData then
-        QBCore.Functions.Notify("This contact is not buying that item.", "error", 5000)
+        Notify("This contact is not buying that item.", "error", 5000)
         return
     end
 
@@ -757,39 +796,37 @@ RegisterNetEvent("distortionz_peds:client:sellItem", function(data)
         amountOwned = tonumber(amountOwned) or 0
 
         if amountOwned <= 0 then
-            QBCore.Functions.Notify("You do not have any " .. itemData.label .. " to sell.", "error", 5000)
+            Notify("You do not have any " .. itemData.label .. " to sell.", "error", 5000)
             OpenSellMenu()
             return
         end
 
-        local dialog = exports['qb-input']:ShowInput({
-            header = "Sell " .. itemData.label,
-            submitText = "Sell Items",
-            inputs = {
-                {
-                    text = "Amount owned: " .. amountOwned,
-                    name = "amount",
-                    type = "number",
-                    isRequired = true
-                }
+        local input = lib.inputDialog("Sell " .. itemData.label, {
+            {
+                type = "number",
+                label = "Amount",
+                description = "Amount owned: " .. amountOwned,
+                required = true,
+                min = 1,
+                max = amountOwned
             }
         })
 
-        if not dialog or not dialog.amount then
+        if not input or not input[1] then
             return
         end
 
-        local amount = tonumber(dialog.amount)
+        local amount = tonumber(input[1])
 
         if not amount or amount <= 0 then
-            QBCore.Functions.Notify("Invalid amount.", "error", 5000)
+            Notify("Invalid amount.", "error", 5000)
             return
         end
 
         amount = math.floor(amount)
 
         if amount > amountOwned then
-            QBCore.Functions.Notify("You only have " .. amountOwned .. "x " .. itemData.label .. ".", "error", 5000)
+            Notify("You only have " .. amountOwned .. "x " .. itemData.label .. ".", "error", 5000)
             return
         end
 
@@ -799,12 +836,12 @@ end)
 
 RegisterNetEvent("distortionz_peds:client:startSuspiciousDelivery", function()
     if activeDelivery then
-        QBCore.Functions.Notify("Finish your current delivery first.", "error", 5000)
+        Notify("Finish your current delivery first.", "error", 5000)
         return
     end
 
     if isDoingContactHandoff then
-        QBCore.Functions.Notify("Wait a second.", "error", 3000)
+        Notify("Wait a second.", "warning", 3000)
         return
     end
 
@@ -823,7 +860,7 @@ end)
 
 RegisterNetEvent("distortionz_peds:client:cancelDelivery", function()
     if not activeDelivery then
-        QBCore.Functions.Notify("You do not have an active delivery.", "error", 5000)
+        Notify("You do not have an active delivery.", "error", 5000)
         return
     end
 
@@ -833,7 +870,7 @@ end)
 
 RegisterNetEvent("distortionz_peds:client:deliveryStarted", function(data)
     if not data or not data.dropoff or not data.item or not data.label then
-        QBCore.Functions.Notify("Delivery data failed to load.", "error", 5000)
+        Notify("Delivery data failed to load.", "error", 5000)
         return
     end
 
@@ -847,7 +884,7 @@ RegisterNetEvent("distortionz_peds:client:deliveryStarted", function(data)
     CreateDeliveryBlip(deliveryDropoff)
     CreateDeliveryReceiverPed(deliveryDropoff)
 
-    QBCore.Functions.Notify("You received a " .. deliveryItemLabel .. ". Deliver it to the GPS location.", "success", 7000)
+    Notify("You received a " .. deliveryItemLabel .. ". Deliver it to the GPS location.", "success", 7000)
 end)
 
 RegisterNetEvent("distortionz_peds:client:deliveryCompleted", function()
@@ -864,7 +901,7 @@ RegisterNetEvent("distortionz_peds:client:blackMarketInfo", function()
 end)
 
 RegisterNetEvent("distortionz_peds:client:streetWork", function()
-    QBCore.Functions.Notify("The contact says: More work is coming soon.", "primary", 5000)
+    Notify("The contact says: More work is coming soon.", "info", 5000)
 end)
 
 RegisterNetEvent("distortionz_peds:client:createPoliceBlip", function(coords, label)
@@ -888,7 +925,7 @@ RegisterNetEvent("distortionz_peds:client:createPoliceBlip", function(coords, la
     end)
 end)
 
-AddEventHandler('onResourceStop', function(resourceName)
+AddEventHandler("onResourceStop", function(resourceName)
     if resourceName ~= GetCurrentResourceName() then
         return
     end

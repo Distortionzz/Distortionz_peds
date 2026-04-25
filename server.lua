@@ -3,6 +3,36 @@ local QBCore = exports['qb-core']:GetCoreObject()
 local ActiveDeliveries = {}
 local Cooldowns = {}
 
+local function NotifyClient(src, message, notifyType, duration, title, soundEnabled)
+    if not src or not message then return end
+
+    notifyType = notifyType or "primary"
+    duration = tonumber(duration) or 5000
+    title = title or "Distortionz Underground"
+
+    if notifyType == "inform" then
+        notifyType = "info"
+    end
+
+    if GetResourceState("distortionz_notify") == "started" then
+        TriggerClientEvent("distortionz_notify:client:notify", src, {
+            title = title,
+            message = message,
+            type = notifyType,
+            duration = duration,
+            sound = soundEnabled
+        })
+        return
+    end
+
+    TriggerClientEvent("ox_lib:notify", src, {
+        title = title,
+        description = message,
+        type = notifyType,
+        duration = duration
+    })
+end
+
 local function GetIdentifier(src)
     local Player = QBCore.Functions.GetPlayer(src)
 
@@ -126,10 +156,6 @@ local function PayPlayer(Player, src, amount, reason)
         Player.Functions.AddItem("markedbills", 1, false, {
             worth = amount
         })
-
-        if QBCore.Shared.Items["markedbills"] then
-            TriggerClientEvent("inventory:client:ItemBox", src, QBCore.Shared.Items["markedbills"], "add", 1)
-        end
     else
         Player.Functions.AddMoney(Config.PayAccount, amount, reason)
     end
@@ -140,10 +166,6 @@ local function RemoveDeliveryItem(Player, src, itemName)
 
     if item and item.amount > 0 then
         Player.Functions.RemoveItem(itemName, 1)
-
-        if QBCore.Shared.Items[itemName] then
-            TriggerClientEvent("inventory:client:ItemBox", src, QBCore.Shared.Items[itemName], "remove", 1)
-        end
     end
 end
 
@@ -158,7 +180,7 @@ local function AlertPolice(coords, message)
         if job and job.name and Config.PoliceAlerts.jobs[job.name] and job.onduty then
             local target = Player.PlayerData.source
 
-            TriggerClientEvent("QBCore:Notify", target, message or "Suspicious activity reported.", "error", 7500)
+            NotifyClient(target, message or "Suspicious activity reported.", "police", 7500, "Dispatch")
             TriggerClientEvent("distortionz_peds:client:createPoliceBlip", target, coords, Config.PoliceAlerts.blip.label)
         end
     end
@@ -246,7 +268,7 @@ RegisterNetEvent("distortionz_peds:server:sellItem", function(itemName, amount)
     local onCooldown, remaining = HasCooldown(src, "sell")
 
     if onCooldown then
-        TriggerClientEvent("QBCore:Notify", src, "Slow down. Wait " .. remaining .. " seconds.", "error", 4000)
+        NotifyClient(src, "Slow down. Wait " .. remaining .. " seconds.", "error", 4000)
         return
     end
 
@@ -254,14 +276,14 @@ RegisterNetEvent("distortionz_peds:server:sellItem", function(itemName, amount)
 
     if not itemData then
         print("[distortionz_peds] Exploit attempt: invalid sell item from " .. src .. " item=" .. tostring(itemName))
-        TriggerClientEvent("QBCore:Notify", src, "This contact is not buying that item.", "error", 5000)
+        NotifyClient(src, "This contact is not buying that item.", "error", 5000)
         return
     end
 
     amount = tonumber(amount)
 
     if not amount or amount <= 0 then
-        TriggerClientEvent("QBCore:Notify", src, "Invalid amount.", "error", 5000)
+        NotifyClient(src, "Invalid amount.", "error", 5000)
         return
     end
 
@@ -270,7 +292,7 @@ RegisterNetEvent("distortionz_peds:server:sellItem", function(itemName, amount)
     local item = Player.Functions.GetItemByName(itemName)
 
     if not item or item.amount < amount then
-        TriggerClientEvent("QBCore:Notify", src, "You do not have enough " .. itemData.label .. " to sell.", "error", 5000)
+        NotifyClient(src, "You do not have enough " .. itemData.label .. " to sell.", "error", 5000)
         return
     end
 
@@ -285,10 +307,6 @@ RegisterNetEvent("distortionz_peds:server:sellItem", function(itemName, amount)
 
     Player.Functions.RemoveItem(itemName, amount)
 
-    if QBCore.Shared.Items[itemName] then
-        TriggerClientEvent("inventory:client:ItemBox", src, QBCore.Shared.Items[itemName], "remove", amount)
-    end
-
     PayPlayer(Player, src, totalPayout, "sold-underground-market-items")
     AddPlayerRep(Player, Config.Reputation.gains.sellItem * amount)
     SetCooldown(src, "sell", Config.Cooldowns.sell)
@@ -299,11 +317,13 @@ RegisterNetEvent("distortionz_peds:server:sellItem", function(itemName, amount)
         TryPoliceAlert(Config.PoliceAlerts.sellHighValueChance, coords, "Suspicious sale reported.")
     end
 
+    local message = "You sold " .. amount .. "x " .. itemData.label .. " for $" .. totalPayout .. "."
+
     if Config.PayAccount == "markedbills" then
-        TriggerClientEvent("QBCore:Notify", src, "You sold " .. amount .. "x " .. itemData.label .. " for marked bills worth $" .. totalPayout .. ".", "success", 5000)
-    else
-        TriggerClientEvent("QBCore:Notify", src, "You sold " .. amount .. "x " .. itemData.label .. " for $" .. totalPayout .. ".", "success", 5000)
+        message = "You sold " .. amount .. "x " .. itemData.label .. " for marked bills worth $" .. totalPayout .. "."
     end
+
+    NotifyClient(src, message, "success", 5000)
 end)
 
 RegisterNetEvent("distortionz_peds:server:buyBlackMarketItem", function(itemName)
@@ -315,12 +335,12 @@ RegisterNetEvent("distortionz_peds:server:buyBlackMarketItem", function(itemName
     local onCooldown, remaining = HasCooldown(src, "blackmarket")
 
     if onCooldown then
-        TriggerClientEvent("QBCore:Notify", src, "Wait " .. remaining .. " seconds.", "error", 4000)
+        NotifyClient(src, "Wait " .. remaining .. " seconds.", "error", 4000)
         return
     end
 
     if not Config.BlackMarket.enabled then
-        TriggerClientEvent("QBCore:Notify", src, "Black market is closed.", "error", 5000)
+        NotifyClient(src, "Black market is closed.", "error", 5000)
         return
     end
 
@@ -328,24 +348,24 @@ RegisterNetEvent("distortionz_peds:server:buyBlackMarketItem", function(itemName
 
     if not itemData then
         print("[distortionz_peds] Exploit attempt: invalid black market item from " .. src .. " item=" .. tostring(itemName))
-        TriggerClientEvent("QBCore:Notify", src, "That item is not available.", "error", 5000)
+        NotifyClient(src, "That item is not available.", "error", 5000)
         return
     end
 
     local repData = GetPlayerRepData(Player)
 
     if repData.level < itemData.requiredLevel then
-        TriggerClientEvent("QBCore:Notify", src, "You are not trusted enough.", "error", 5000)
+        NotifyClient(src, "You are not trusted enough.", "error", 5000)
         return
     end
 
     if Player.PlayerData.money.cash < itemData.price then
-        TriggerClientEvent("QBCore:Notify", src, "You need $" .. itemData.price .. " cash.", "error", 5000)
+        NotifyClient(src, "You need $" .. itemData.price .. " cash.", "error", 5000)
         return
     end
 
     if not QBCore.Shared.Items[itemName] then
-        TriggerClientEvent("QBCore:Notify", src, "Missing item in qb-core/shared/items.lua: " .. itemName, "error", 7000)
+        NotifyClient(src, "Missing item in inventory data: " .. itemName, "error", 7000)
         return
     end
 
@@ -355,11 +375,9 @@ RegisterNetEvent("distortionz_peds:server:buyBlackMarketItem", function(itemName
 
     if not added then
         Player.Functions.AddMoney("cash", itemData.price, "black-market-refund")
-        TriggerClientEvent("QBCore:Notify", src, "Not enough inventory space.", "error", 5000)
+        NotifyClient(src, "Not enough inventory space.", "error", 5000)
         return
     end
-
-    TriggerClientEvent("inventory:client:ItemBox", src, QBCore.Shared.Items[itemName], "add", itemData.amount)
 
     AddPlayerRep(Player, Config.Reputation.gains.buyBlackMarket)
     SetCooldown(src, "blackmarket", Config.Cooldowns.blackMarketBuy)
@@ -368,7 +386,7 @@ RegisterNetEvent("distortionz_peds:server:buyBlackMarketItem", function(itemName
     local coords = GetEntityCoords(ped)
     TryPoliceAlert(Config.PoliceAlerts.blackMarketBuyChance, coords, "Suspicious black market activity reported.")
 
-    TriggerClientEvent("QBCore:Notify", src, "You bought " .. itemData.amount .. "x " .. itemData.label .. " for $" .. itemData.price .. ".", "success", 5000)
+    NotifyClient(src, "You bought " .. itemData.amount .. "x " .. itemData.label .. " for $" .. itemData.price .. ".", "success", 5000)
 end)
 
 RegisterNetEvent("distortionz_peds:server:startDelivery", function()
@@ -378,19 +396,19 @@ RegisterNetEvent("distortionz_peds:server:startDelivery", function()
     if not Player then return end
 
     if not Config.Delivery.enabled then
-        TriggerClientEvent("QBCore:Notify", src, "No delivery work is available right now.", "error", 5000)
+        NotifyClient(src, "No delivery work is available right now.", "error", 5000)
         return
     end
 
     local onCooldown, remaining = HasCooldown(src, "delivery")
 
     if onCooldown then
-        TriggerClientEvent("QBCore:Notify", src, "No work right now. Come back in " .. remaining .. " seconds.", "error", 5000)
+        NotifyClient(src, "No work right now. Come back in " .. remaining .. " seconds.", "error", 5000)
         return
     end
 
     if ActiveDeliveries[src] and not Config.Delivery.allowMultipleActiveDeliveries then
-        TriggerClientEvent("QBCore:Notify", src, "You already have an active delivery.", "error", 5000)
+        NotifyClient(src, "You already have an active delivery.", "error", 5000)
         return
     end
 
@@ -401,7 +419,7 @@ RegisterNetEvent("distortionz_peds:server:startDelivery", function()
     payout = ApplyPayoutBonus(payout, repData.level)
 
     if not QBCore.Shared.Items[deliveryItem.item] then
-        TriggerClientEvent("QBCore:Notify", src, "Delivery item is missing from qb-core/shared/items.lua: " .. deliveryItem.item, "error", 7000)
+        NotifyClient(src, "Delivery item is missing from inventory data: " .. deliveryItem.item, "error", 7000)
         return
     end
 
@@ -412,11 +430,9 @@ RegisterNetEvent("distortionz_peds:server:startDelivery", function()
     })
 
     if not added then
-        TriggerClientEvent("QBCore:Notify", src, "You do not have enough inventory space.", "error", 5000)
+        NotifyClient(src, "You do not have enough inventory space.", "error", 5000)
         return
     end
-
-    TriggerClientEvent("inventory:client:ItemBox", src, QBCore.Shared.Items[deliveryItem.item], "add", 1)
 
     ActiveDeliveries[src] = {
         item = deliveryItem.item,
@@ -439,7 +455,7 @@ RegisterNetEvent("distortionz_peds:server:startDelivery", function()
         timeLimit = Config.Delivery.timeLimitSeconds
     })
 
-    TriggerClientEvent("QBCore:Notify", src, "The contact says: Take this and do not ask questions.", "primary", 6000)
+    NotifyClient(src, "The contact says: Take this and do not ask questions.", "primary", 6000)
 end)
 
 RegisterNetEvent("distortionz_peds:server:completeDelivery", function()
@@ -451,7 +467,7 @@ RegisterNetEvent("distortionz_peds:server:completeDelivery", function()
     local delivery = ActiveDeliveries[src]
 
     if not delivery then
-        TriggerClientEvent("QBCore:Notify", src, "You do not have an active delivery.", "error", 5000)
+        NotifyClient(src, "You do not have an active delivery.", "error", 5000)
         TriggerClientEvent("distortionz_peds:client:deliveryFailed", src)
         return
     end
@@ -460,7 +476,8 @@ RegisterNetEvent("distortionz_peds:server:completeDelivery", function()
         RemoveDeliveryItem(Player, src, delivery.item)
         ActiveDeliveries[src] = nil
         SetCooldown(src, "delivery", Config.Cooldowns.delivery)
-        TriggerClientEvent("QBCore:Notify", src, "You took too long. Job failed.", "error", 6000)
+
+        NotifyClient(src, "You took too long. Job failed.", "error", 6000)
         TriggerClientEvent("distortionz_peds:client:deliveryFailed", src)
         return
     end
@@ -474,7 +491,7 @@ RegisterNetEvent("distortionz_peds:server:completeDelivery", function()
 
         if distance > Config.Delivery.serverCompleteDistance then
             print("[distortionz_peds] Exploit attempt: delivery complete too far src=" .. src .. " distance=" .. distance)
-            TriggerClientEvent("QBCore:Notify", src, "You are too far from the drop-off.", "error", 5000)
+            NotifyClient(src, "You are too far from the drop-off.", "error", 5000)
             return
         end
     end
@@ -484,16 +501,13 @@ RegisterNetEvent("distortionz_peds:server:completeDelivery", function()
     if not item or item.amount < 1 then
         ActiveDeliveries[src] = nil
         SetCooldown(src, "delivery", Config.Cooldowns.delivery)
-        TriggerClientEvent("QBCore:Notify", src, "You lost the delivery item. Job failed.", "error", 6000)
+
+        NotifyClient(src, "You lost the delivery item. Job failed.", "error", 6000)
         TriggerClientEvent("distortionz_peds:client:deliveryFailed", src)
         return
     end
 
     Player.Functions.RemoveItem(delivery.item, 1)
-
-    if QBCore.Shared.Items[delivery.item] then
-        TriggerClientEvent("inventory:client:ItemBox", src, QBCore.Shared.Items[delivery.item], "remove", 1)
-    end
 
     PayPlayer(Player, src, delivery.payout, "completed-underground-delivery")
     AddPlayerRep(Player, Config.Reputation.gains.completeDelivery)
@@ -503,11 +517,13 @@ RegisterNetEvent("distortionz_peds:server:completeDelivery", function()
     local coords = GetEntityCoords(playerPed)
     TryPoliceAlert(Config.PoliceAlerts.completeDeliveryChance, coords, "Suspicious drop-off reported.")
 
+    local message = "Delivery complete. You earned $" .. delivery.payout .. "."
+
     if Config.PayAccount == "markedbills" then
-        TriggerClientEvent("QBCore:Notify", src, "Delivery complete. You received marked bills worth $" .. delivery.payout .. ".", "success", 7000)
-    else
-        TriggerClientEvent("QBCore:Notify", src, "Delivery complete. You earned $" .. delivery.payout .. ".", "success", 7000)
+        message = "Delivery complete. You received marked bills worth $" .. delivery.payout .. "."
     end
+
+    NotifyClient(src, message, "cash", 7000)
 
     ActiveDeliveries[src] = nil
     TriggerClientEvent("distortionz_peds:client:deliveryCompleted", src)
@@ -522,7 +538,7 @@ RegisterNetEvent("distortionz_peds:server:cancelDelivery", function()
     local delivery = ActiveDeliveries[src]
 
     if not delivery then
-        TriggerClientEvent("QBCore:Notify", src, "You do not have an active delivery.", "error", 5000)
+        NotifyClient(src, "You do not have an active delivery.", "error", 5000)
         return
     end
 
@@ -533,7 +549,7 @@ RegisterNetEvent("distortionz_peds:server:cancelDelivery", function()
     ActiveDeliveries[src] = nil
     SetCooldown(src, "delivery", Config.Cooldowns.delivery)
 
-    TriggerClientEvent("QBCore:Notify", src, "You cancelled the delivery.", "error", 5000)
+    NotifyClient(src, "You cancelled the delivery.", "warning", 5000)
     TriggerClientEvent("distortionz_peds:client:deliveryFailed", src)
 end)
 
@@ -554,7 +570,7 @@ RegisterNetEvent("distortionz_peds:server:failDelivery", function(reason)
     ActiveDeliveries[src] = nil
     SetCooldown(src, "delivery", Config.Cooldowns.delivery)
 
-    TriggerClientEvent("QBCore:Notify", src, reason or "Delivery failed.", "error", 6000)
+    NotifyClient(src, reason or "Delivery failed.", "error", 6000)
     TriggerClientEvent("distortionz_peds:client:deliveryFailed", src)
 end)
 
