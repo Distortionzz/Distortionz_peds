@@ -2,7 +2,14 @@ Config = {}
 
 Config.Script = {
     name = "Distortionz Underground",
-    version = "1.3.2"
+    version = "1.3.3"
+}
+
+Config.VersionCheck = {
+    enabled = true,
+    resourceName = "Distortionz_peds",
+    currentVersion = "1.3.3",
+    githubVersionUrl = "https://raw.githubusercontent.com/Distortionzz/Distortionz_peds/main/version.json"
 }
 
 Config.Ped = {

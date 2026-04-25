@@ -1,126 +1,86 @@
-# 🚇 Distortionz_peds Update Summary
+# 🚇 Distortionz Underground Contact
 
-## ✅ Latest Version
-
-**Distortionz_peds** has been updated into a full **Qbox/Ox-compatible underground contact system** with custom Distortionz notification support.
-
----
-
-## 🔄 Major Changes
-
-### 🧱 Qbox / Ox Migration
-- Converted menu system from `qb-menu` to `ox_lib` context menus.
-- Converted input system from `qb-input` to `ox_lib` input dialogs.
-- Removed dependency on `qb-menu`.
-- Removed dependency on `qb-input`.
-- Added support for:
-  - `qbx_core`
-  - `ox_lib`
-  - `ox_inventory`
-
-### 🔔 Distortionz Notify Integration
-- Integrated full support for `distortionz_notify`.
-- All script notifications now use the custom Distortionz notification UI.
-- Added fallback to `ox_lib` notifications if `distortionz_notify` is not running.
-- Supports custom notification types:
-  - `primary`
-  - `success`
-  - `error`
-  - `warning`
-  - `info`
-  - `cash`
-  - `police`
-
-### 🔊 Per-Status Notification Sounds
-- Delivery payout uses the `cash` notification sound.
-- Police alerts use the `police` notification sound.
-- Errors, warnings, success messages, and info messages use their own status sounds through `distortionz_notify`.
+A custom **QBCore FiveM underground contact script** built for roleplay servers.  
+This system adds an illegal contact ped where players can sell valuable items, run suspicious deliveries, build reputation, unlock black market items, and trigger police alerts.
 
 ---
 
-## 🕵️ Underground Contact System
+## ✨ Features
 
-- Main underground contact ped spawns at configured location.
-- Ped is invincible, frozen, and uses idle scenario animation.
-- Interaction prompt appears near the contact.
-- Contact menu displays:
-  - Script version
-  - Player reputation
-  - Cooldown status
-  - Mini Market
-  - Suspicious Delivery
-  - Cancel Delivery
-  - Black Market
-  - Street Work placeholder
+### 🕵️ Underground Contact Ped
+- Custom illegal contact ped
+- Map blip support
+- 3D interaction text
+- Version displayed in menu
+- Reputation displayed in menu
 
----
+### 💰 Mini Market Sell System
+- Sell valuables, electronics, cards, and rare goods
+- Inventory-aware menu
+- Shows how many items the player has
+- Custom sell amount input
+- Random payout ranges
+- Reputation payout bonus
+- Sell cooldown display
 
-## 💰 Mini Market
+### 📦 Suspicious Delivery System
+- Random delivery item
+- Random drop-off location
+- GPS route to delivery point
+- Delivery timer
+- Delivery cooldown display
+- Cancel delivery option
+- Fail delivery on death
+- Fail delivery if time expires
+- Server-side delivery validation
 
-- Players can sell configured valuable items.
-- Menu reads the player’s inventory before showing sell options.
-- Items without inventory amount are disabled.
-- Player can enter custom sell amount.
-- Server validates:
-  - Item exists
-  - Amount is valid
-  - Player has enough of the item
-  - Sell cooldown is not active
-- High-value sales can trigger police alerts.
-- Selling items increases underground reputation.
+### 🤝 Handoff Animations
+- Main underground contact gives package to player
+- Delivery receiver takes package from player
+- Player and ped face each other before handoff
+- Receiver returns to phone animation after handoff
 
----
+### 📱 Receiver Ped System
+- Random receiver ped models
+- Receiver waits at drop-off location
+- Receiver uses phone idle animation
+- Premium prompt above receiver’s head
+- Red marker disabled for cleaner look
 
-## 📦 Suspicious Delivery System
+### 📈 Reputation System
+- Underground rep stored in QBCore metadata
+- Rep increases from selling, deliveries, and black market purchases
+- Rep levels unlock better opportunities
+- Higher rep gives better delivery payouts
 
-- Players can request suspicious delivery jobs.
-- Delivery jobs include:
-  - Random delivery item
-  - Random drop-off location
-  - Delivery timer
-  - Delivery cooldown
-  - GPS route
-  - Receiver ped at destination
-- Delivery receiver ped:
-  - Spawns at drop-off
-  - Uses phone idle animation
-  - Faces player during handoff
-  - Plays handoff animation
-  - Returns to phone animation after handoff
-- Delivery can fail if:
-  - Timer expires
-  - Player dies
-  - Player loses delivery item
-  - Player is too far from drop-off
-- Delivery completion increases reputation and pays the player.
+### 🛒 Black Market
+- Rep-locked item shop
+- Buy underground tools and items
+- Black market cooldown display
+- Uses existing QBCore items where possible
 
----
-
-## 🤝 Animation Improvements
-
-- Main contact now performs handoff animation when giving a delivery item.
-- Receiver ped performs handoff animation when taking the delivery item.
-- Player and ped face each other before animation starts.
-- Movement controls are disabled during handoff to prevent animation breaking.
-
----
-
-## 📈 Reputation System
-
-- Underground reputation is stored in player metadata.
-- Rep increases from:
-  - Selling items
+### 🚔 Police Alert System
+- Chance to alert police on:
+  - Starting deliveries
   - Completing deliveries
+  - Selling high-value items
   - Buying black market items
-- Rep levels unlock better opportunities.
-- Higher reputation gives payout bonuses.
+- Temporary police blips
+- Supports police/sheriff jobs
 
-Default reputation levels:
+### 🛡️ Anti-Exploit Protection
+- Server validates item names
+- Server validates delivery distance
+- Server validates active delivery
+- Server validates inventory item exists
+- Cooldown protection
+- Logs suspicious invalid item attempts
+
+---
+
+## 🧱 Dependencies
 
 ```txt
-Unknown
-Runner
-Trusted
-Plugged In
-Heavy Mover
-Underground VIP
+qb-core
+qb-menu
+qb-input

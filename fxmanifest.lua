@@ -2,8 +2,8 @@ fx_version 'cerulean'
 game 'gta5'
 
 author 'Distortionz'
-description 'Underground contact with illegal market, reputation, deliveries, police alerts, black market, Qbox/Ox support, and Distortionz Notify support'
-version '1.3.2'
+description 'Underground contact with illegal market, reputation, deliveries, police alerts, black market, Qbox/Ox support, Distortionz Notify support, and GitHub version checking'
+version '1.3.3'
 
 shared_scripts {
     '@ox_lib/init.lua',
