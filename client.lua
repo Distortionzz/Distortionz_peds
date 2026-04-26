@@ -3,6 +3,8 @@ local QBCore = exports['qb-core']:GetCoreObject()
 local spawnedPed = nil
 local contactBlip = nil
 local menuOpen = false
+local nuiOpen = false
+local contactTargetAdded = false
 
 local activeDelivery = false
 local deliveryDropoff = nil
@@ -10,9 +12,19 @@ local deliveryItem = nil
 local deliveryItemLabel = nil
 local deliveryBlip = nil
 local deliveryReceiverPed = nil
+local deliveryReceiverTargetAdded = false
+local deliveryZoneTargetId = nil
 local isDoingHandoff = false
 local isDoingContactHandoff = false
 local deliveryEndsAt = nil
+
+local function NormalizeModel(model)
+    if type(model) == "string" then
+        return joaat(model)
+    end
+
+    return model
+end
 
 local function Notify(message, notifyType, duration, title, soundEnabled)
     if not message then return end
@@ -44,37 +56,40 @@ local function Notify(message, notifyType, duration, title, soundEnabled)
     })
 end
 
-local function DrawText3D(x, y, z, text)
-    SetTextScale(0.35, 0.35)
-    SetTextFont(4)
-    SetTextProportional(1)
-    SetTextColour(255, 255, 255, 230)
-    SetTextEntry("STRING")
-    SetTextCentre(true)
-    AddTextComponentString(text)
-    SetDrawOrigin(x, y, z, 0)
-    DrawText(0.0, 0.0)
+local function MarkDistortionzPedProtected(ped, pedType)
+    if not ped or ped == 0 then return end
+    if not DoesEntityExist(ped) then return end
 
-    local factor = string.len(text) / 370
-    DrawRect(0.0, 0.0125, 0.017 + factor, 0.03, 0, 0, 0, 135)
+    Entity(ped).state:set('distortionz_protected_ped', true, true)
+    Entity(ped).state:set('distortionz_contact_ped', true, true)
 
-    ClearDrawOrigin()
+    if pedType and pedType ~= '' then
+        Entity(ped).state:set(pedType, true, true)
+    end
 end
 
 local function LoadModel(model)
+    model = NormalizeModel(model)
+
     RequestModel(model)
 
     while not HasModelLoaded(model) do
         Wait(10)
     end
+
+    return model
 end
 
 local function LoadAnimDict(animDict)
+    if not animDict or animDict == "" then return false end
+
     RequestAnimDict(animDict)
 
     while not HasAnimDictLoaded(animDict) do
         Wait(10)
     end
+
+    return true
 end
 
 local function PlayDeliveryCompleteSound()
@@ -91,16 +106,18 @@ end
 
 local function StartPedScenario(ped, scenario)
     if not ped or not DoesEntityExist(ped) then return end
-    if not scenario then return end
+    if not scenario or scenario == "" then return end
 
     ClearPedTasks(ped)
     TaskStartScenarioInPlace(ped, scenario, 0, true)
 end
 
 local function CreateContactBlip()
-    if not Config.Blip.enabled then return end
+    if not Config.Blip or not Config.Blip.enabled then return end
+    if contactBlip and DoesBlipExist(contactBlip) then return end
 
     local coords = Config.Ped.coords
+
     contactBlip = AddBlipForCoord(coords.x, coords.y, coords.z)
 
     SetBlipSprite(contactBlip, Config.Blip.sprite)
@@ -114,7 +131,100 @@ local function CreateContactBlip()
     EndTextCommandSetBlipName(contactBlip)
 end
 
+local function FaceEntityToEntity(entityOne, entityTwo)
+    if not entityOne or not entityTwo then return end
+    if not DoesEntityExist(entityOne) or not DoesEntityExist(entityTwo) then return end
+
+    local entityOneCoords = GetEntityCoords(entityOne)
+    local entityTwoCoords = GetEntityCoords(entityTwo)
+
+    local heading = GetHeadingFromVector_2d(
+        entityTwoCoords.x - entityOneCoords.x,
+        entityTwoCoords.y - entityOneCoords.y
+    )
+
+    SetEntityHeading(entityOne, heading)
+end
+
+local function FormatSeconds(seconds)
+    seconds = tonumber(seconds) or 0
+
+    if seconds < 0 then
+        seconds = 0
+    end
+
+    local minutes = math.floor(seconds / 60)
+    local secs = seconds % 60
+
+    return string.format("%02d:%02d", minutes, secs)
+end
+
+local function GetActiveDeliverySeconds()
+    if not activeDelivery or not deliveryEndsAt then
+        return 0
+    end
+
+    local remaining = deliveryEndsAt - GetGameTimer()
+    remaining = math.floor(remaining / 1000)
+
+    if remaining < 0 then
+        remaining = 0
+    end
+
+    return remaining
+end
+
+local function GetCooldownText(cooldowns, name, readyText)
+    local value = 0
+
+    if cooldowns and cooldowns[name] then
+        value = tonumber(cooldowns[name]) or 0
+    end
+
+    if value > 0 then
+        return "Cooldown: " .. FormatSeconds(value)
+    end
+
+    return readyText
+end
+
+local function GetTargetConfig()
+    return Config.Target or {}
+end
+
+local function GetMenuVersionText()
+    local scriptName = Config.Script and Config.Script.name or "Distortionz Underground"
+    local scriptVersion = Config.Script and Config.Script.version or "Unknown"
+
+    return scriptName .. " | v" .. scriptVersion
+end
+
+local function RemoveDeliveryReceiverTarget()
+    if not deliveryReceiverTargetAdded then return end
+
+    if deliveryReceiverPed and DoesEntityExist(deliveryReceiverPed) and GetResourceState("ox_target") == "started" then
+        exports.ox_target:removeLocalEntity(deliveryReceiverPed, {
+            "distortionz_peds_delivery_handoff"
+        })
+    end
+
+    deliveryReceiverTargetAdded = false
+end
+
+local function RemoveDeliveryZoneTarget()
+    if not deliveryZoneTargetId then return end
+
+    if GetResourceState("ox_target") == "started" then
+        exports.ox_target:removeZone(deliveryZoneTargetId)
+    end
+
+    deliveryZoneTargetId = nil
+end
+
 local function DeleteDeliveryReceiverPed()
+    RemoveDeliveryReceiverTarget()
+    RemoveDeliveryZoneTarget()
+
     if deliveryReceiverPed and DoesEntityExist(deliveryReceiverPed) then
         DeleteEntity(deliveryReceiverPed)
     end
@@ -145,6 +255,10 @@ local function CreateDeliveryBlip(coords)
         RemoveBlip(deliveryBlip)
     end
 
+    if Config.Delivery.blip.clearPersonalWaypointOnStart then
+        SetWaypointOff()
+    end
+
     deliveryBlip = AddBlipForCoord(coords.x, coords.y, coords.z)
 
     SetBlipSprite(deliveryBlip, Config.Delivery.blip.sprite)
@@ -159,13 +273,16 @@ local function CreateDeliveryBlip(coords)
     AddTextComponentString(Config.Delivery.blip.label)
     EndTextCommandSetBlipName(deliveryBlip)
 
+    -- Keep this disabled when you only want the delivery route GPS.
+    -- SetNewWaypoint creates GTA's purple personal waypoint route.
     if Config.Delivery.blip.usePersonalWaypoint then
         SetNewWaypoint(coords.x, coords.y)
     end
 end
 
 local function GetRandomReceiverModel()
-    local models = Config.Delivery.receiverPed.models
+    local receiverConfig = Config.Delivery.receiverPed or {}
+    local models = receiverConfig.models
 
     if models and #models > 0 then
         return models[math.random(1, #models)]
@@ -174,13 +291,161 @@ local function GetRandomReceiverModel()
     return `a_m_m_eastsa_02`
 end
 
+local function CompleteDeliveryFromTarget()
+    if not activeDelivery then
+        Notify("You do not have an active delivery.", "error", 5000)
+        return
+    end
+
+    if isDoingHandoff or isDoingContactHandoff then
+        return
+    end
+
+    if Config.Delivery.handoff and Config.Delivery.handoff.enabled then
+        CreateThread(function()
+            if isDoingHandoff then return end
+            if not activeDelivery or not deliveryDropoff then return end
+
+            isDoingHandoff = true
+
+            local playerPed = PlayerPedId()
+            local animDict = Config.Delivery.handoff.animDict
+            local animName = Config.Delivery.handoff.animName
+            local duration = tonumber(Config.Delivery.handoff.duration) or 3000
+
+            if deliveryReceiverPed and DoesEntityExist(deliveryReceiverPed) then
+                ClearPedTasks(deliveryReceiverPed)
+
+                FaceEntityToEntity(deliveryReceiverPed, playerPed)
+                FaceEntityToEntity(playerPed, deliveryReceiverPed)
+
+                TaskTurnPedToFaceEntity(playerPed, deliveryReceiverPed, 800)
+                TaskTurnPedToFaceEntity(deliveryReceiverPed, playerPed, 800)
+            end
+
+            Wait(800)
+
+            if deliveryReceiverPed and DoesEntityExist(deliveryReceiverPed) then
+                FaceEntityToEntity(deliveryReceiverPed, playerPed)
+                FaceEntityToEntity(playerPed, deliveryReceiverPed)
+            end
+
+            LoadAnimDict(animDict)
+
+            FreezeEntityPosition(playerPed, true)
+
+            if deliveryReceiverPed and DoesEntityExist(deliveryReceiverPed) then
+                TaskPlayAnim(deliveryReceiverPed, animDict, animName, 8.0, -8.0, duration, 0, 0, false, false, false)
+            end
+
+            TaskPlayAnim(playerPed, animDict, animName, 8.0, -8.0, duration, 0, 0, false, false, false)
+
+            Notify(Config.Delivery.handoff.text or "Handing off package...", "primary", duration)
+
+            Wait(duration)
+
+            ClearPedTasks(playerPed)
+            FreezeEntityPosition(playerPed, false)
+
+            if deliveryReceiverPed and DoesEntityExist(deliveryReceiverPed) then
+                ClearPedTasks(deliveryReceiverPed)
+
+                if Config.Delivery.receiverPed and Config.Delivery.receiverPed.returnToScenarioAfterHandoff then
+                    StartPedScenario(deliveryReceiverPed, Config.Delivery.receiverPed.scenario)
+                end
+            end
+
+            TriggerServerEvent("distortionz_peds:server:completeDelivery")
+        end)
+    else
+        TriggerServerEvent("distortionz_peds:server:completeDelivery")
+    end
+end
+
+local function GetDeliveryTargetLabel()
+    if deliveryItemLabel and deliveryItemLabel ~= "" then
+        return "Hand Off " .. deliveryItemLabel
+    end
+
+    return "Hand Off Package"
+end
+
+local function AddDeliveryReceiverTarget()
+    if deliveryReceiverTargetAdded then return true end
+    if not deliveryReceiverPed or not DoesEntityExist(deliveryReceiverPed) then return false end
+
+    if GetResourceState("ox_target") ~= "started" then
+        print("[distortionz_peds] ox_target is not started. Delivery handoff target was not added.")
+        return false
+    end
+
+    local targetConfig = GetTargetConfig()
+
+    exports.ox_target:addLocalEntity(deliveryReceiverPed, {
+        {
+            name = "distortionz_peds_delivery_handoff",
+            icon = targetConfig.deliveryIcon or "fa-solid fa-box",
+            label = GetDeliveryTargetLabel(),
+            distance = targetConfig.deliveryDistance or Config.Delivery.completeDistance or 2.0,
+            canInteract = function()
+                return activeDelivery and not isDoingHandoff and not isDoingContactHandoff
+            end,
+            onSelect = function()
+                CompleteDeliveryFromTarget()
+            end
+        }
+    })
+
+    deliveryReceiverTargetAdded = true
+    return true
+end
+
+local function AddDeliveryZoneTarget(coords)
+    RemoveDeliveryZoneTarget()
+
+    if GetResourceState("ox_target") ~= "started" then
+        print("[distortionz_peds] ox_target is not started. Delivery zone target was not added.")
+        return false
+    end
+
+    local targetConfig = GetTargetConfig()
+    local radius = targetConfig.deliveryDistance or Config.Delivery.completeDistance or 2.0
+
+    deliveryZoneTargetId = exports.ox_target:addSphereZone({
+        name = "distortionz_peds_delivery_handoff_zone",
+        coords = vector3(coords.x, coords.y, coords.z),
+        radius = radius,
+        debug = false,
+        options = {
+            {
+                name = "distortionz_peds_delivery_handoff_zone_option",
+                icon = targetConfig.deliveryIcon or "fa-solid fa-box",
+                label = GetDeliveryTargetLabel(),
+                distance = radius,
+                canInteract = function()
+                    return activeDelivery and not isDoingHandoff and not isDoingContactHandoff
+                end,
+                onSelect = function()
+                    CompleteDeliveryFromTarget()
+                end
+            }
+        }
+    })
+
+    return deliveryZoneTargetId ~= nil
+end
+
 local function CreateDeliveryReceiverPed(coords)
-    if not Config.Delivery.receiverPed.enabled then return end
+    local receiverConfig = Config.Delivery.receiverPed or {}
 
     DeleteDeliveryReceiverPed()
 
-    local model = GetRandomReceiverModel()
-    LoadModel(model)
+    if receiverConfig.enabled == false then
+        AddDeliveryZoneTarget(coords)
+        return
+    end
+
+    local model = LoadModel(GetRandomReceiverModel())
 
     deliveryReceiverPed = CreatePed(
         4,
@@ -188,7 +453,7 @@ local function CreateDeliveryReceiverPed(coords)
         coords.x,
         coords.y,
         coords.z - 1.0,
-        coords.w,
+        coords.w or 0.0,
         false,
         true
     )
@@ -196,317 +461,239 @@ local function CreateDeliveryReceiverPed(coords)
     SetEntityAsMissionEntity(deliveryReceiverPed, true, true)
     SetBlockingOfNonTemporaryEvents(deliveryReceiverPed, true)
     SetPedDiesWhenInjured(deliveryReceiverPed, false)
+    SetPedCanPlayAmbientAnims(deliveryReceiverPed, true)
+    SetPedCanPlayAmbientBaseAnims(deliveryReceiverPed, true)
     SetPedCanRagdollFromPlayerImpact(deliveryReceiverPed, false)
 
-    if Config.Delivery.receiverPed.invincible then
+    MarkDistortionzPedProtected(deliveryReceiverPed, 'distortionz_delivery_receiver_ped')
+
+    if receiverConfig.invincible then
         SetEntityInvincible(deliveryReceiverPed, true)
     end
 
-    if Config.Delivery.receiverPed.freeze then
+    if receiverConfig.freeze then
         FreezeEntityPosition(deliveryReceiverPed, true)
     end
 
-    StartPedScenario(deliveryReceiverPed, Config.Delivery.receiverPed.scenario)
+    StartPedScenario(deliveryReceiverPed, receiverConfig.scenario)
+    AddDeliveryReceiverTarget()
 
     SetModelAsNoLongerNeeded(model)
 end
 
-local function FaceEntityToEntity(entityOne, entityTwo)
-    if not entityOne or not entityTwo then return end
-    if not DoesEntityExist(entityOne) or not DoesEntityExist(entityTwo) then return end
-
-    local entityOneCoords = GetEntityCoords(entityOne)
-    local entityTwoCoords = GetEntityCoords(entityTwo)
-
-    local heading = GetHeadingFromVector_2d(
-        entityTwoCoords.x - entityOneCoords.x,
-        entityTwoCoords.y - entityOneCoords.y
-    )
-
-    SetEntityHeading(entityOne, heading)
-end
-
-local function GetDeliveryPromptCoords()
-    if deliveryReceiverPed and DoesEntityExist(deliveryReceiverPed) and Config.Delivery.prompt.usePedHeadPosition then
-        local headCoords = GetPedBoneCoords(deliveryReceiverPed, 31086, 0.0, 0.0, Config.Delivery.prompt.headOffset or 0.18)
-        return headCoords.x, headCoords.y, headCoords.z
-    end
-
-    if deliveryDropoff then
-        return deliveryDropoff.x, deliveryDropoff.y, deliveryDropoff.z + 1.1
-    end
-
-    return 0.0, 0.0, 0.0
-end
-
-local function GetMenuVersionText()
-    local scriptName = Config.Script and Config.Script.name or "Distortionz Underground"
-    local scriptVersion = Config.Script and Config.Script.version or "Unknown"
-
-    return scriptName .. " | v" .. scriptVersion
-end
-
-local function FormatSeconds(seconds)
-    seconds = tonumber(seconds) or 0
-
-    if seconds < 0 then
-        seconds = 0
-    end
-
-    local minutes = math.floor(seconds / 60)
-    local secs = seconds % 60
-
-    return string.format("%02d:%02d", minutes, secs)
-end
-
-local function GetCooldownText(cooldowns, name, readyText)
-    local value = 0
-
-    if cooldowns and cooldowns[name] then
-        value = tonumber(cooldowns[name]) or 0
-    end
-
-    if value > 0 then
-        return "Cooldown: " .. FormatSeconds(value)
-    end
-
-    return readyText
-end
-
-local function OpenIllegalMenu()
-    if menuOpen then return end
-    menuOpen = true
-
-    QBCore.Functions.TriggerCallback("distortionz_peds:server:getPlayerRep", function(repData)
-        repData = repData or {
-            level = 0,
-            label = "Unknown",
-            rep = 0,
-            cooldowns = {
-                delivery = 0,
-                sell = 0,
-                blackmarket = 0
-            }
+local function BuildMenuPayload(repData, inventoryCounts)
+    repData = repData or {
+        level = 0,
+        label = "Unknown",
+        rep = 0,
+        cooldowns = {
+            delivery = 0,
+            sell = 0,
+            blackmarket = 0
         }
+    }
 
-        local cooldowns = repData.cooldowns or {}
-        local deliveryText = GetCooldownText(cooldowns, "delivery", "Ready for work.")
-        local miniMarketText = GetCooldownText(cooldowns, "sell", "Ready to sell valuables.")
-        local blackMarketText = GetCooldownText(cooldowns, "blackmarket", "Market is open.")
+    local cooldowns = repData.cooldowns or {}
+    local sellItems = {}
+    local blackMarketItems = {}
 
-        if activeDelivery then
-            local remaining = 0
+    for itemName, itemData in pairs(Config.SellItems or {}) do
+        local playerAmount = 0
 
-            if deliveryEndsAt then
-                remaining = deliveryEndsAt - GetGameTimer()
-                remaining = math.floor(remaining / 1000)
-            end
-
-            deliveryText = "Active delivery. Time left: " .. FormatSeconds(remaining)
+        if inventoryCounts and inventoryCounts[itemName] then
+            playerAmount = tonumber(inventoryCounts[itemName]) or 0
         end
 
-        lib.registerContext({
-            id = "distortionz_main_menu",
-            title = "Underground Contact",
-            options = {
-                {
-                    title = GetMenuVersionText(),
-                    description = "Rep: " .. repData.label .. " (" .. repData.rep .. ")",
-                    icon = "id-card",
-                    disabled = true
-                },
-                {
-                    title = "Mini Market",
-                    description = miniMarketText,
-                    icon = "store",
-                    disabled = (cooldowns.sell or 0) > 0,
-                    onSelect = function()
-                        TriggerEvent("distortionz_peds:client:openSellMenu")
-                    end
-                },
-                {
-                    title = "Suspicious Delivery",
-                    description = deliveryText,
-                    icon = "box",
-                    disabled = activeDelivery or isDoingContactHandoff or ((cooldowns.delivery or 0) > 0),
-                    onSelect = function()
-                        TriggerEvent("distortionz_peds:client:startSuspiciousDelivery")
-                    end
-                },
-                {
-                    title = "Cancel Delivery",
-                    description = activeDelivery and "Cancel your current job." or "No active delivery.",
-                    icon = "ban",
-                    disabled = not activeDelivery,
-                    onSelect = function()
-                        TriggerEvent("distortionz_peds:client:cancelDelivery")
-                    end
-                },
-                {
-                    title = "Black Market",
-                    description = blackMarketText,
-                    icon = "user-secret",
-                    disabled = (cooldowns.blackmarket or 0) > 0,
-                    onSelect = function()
-                        TriggerEvent("distortionz_peds:client:openBlackMarket")
-                    end
-                },
-                {
-                    title = "Street Work",
-                    description = "More street jobs coming soon.",
-                    icon = "map-location-dot",
-                    onSelect = function()
-                        TriggerEvent("distortionz_peds:client:streetWork")
-                    end
-                },
-                {
-                    title = "Leave",
-                    description = "Walk away.",
-                    icon = "xmark",
-                    onSelect = function()
-                    end
-                }
+        sellItems[#sellItems + 1] = {
+            name = itemName,
+            label = itemData.label or itemName,
+            minPrice = itemData.minPrice or 0,
+            maxPrice = itemData.maxPrice or 0,
+            highValue = itemData.highValue == true,
+            owned = playerAmount
+        }
+    end
+
+    table.sort(sellItems, function(a, b)
+        return a.label < b.label
+    end)
+
+    if Config.BlackMarket and Config.BlackMarket.items then
+        for itemName, itemData in pairs(Config.BlackMarket.items) do
+            local requiredLevel = tonumber(itemData.requiredLevel) or 0
+            local locked = (tonumber(repData.level) or 0) < requiredLevel
+
+            blackMarketItems[#blackMarketItems + 1] = {
+                name = itemName,
+                label = itemData.label or itemName,
+                price = itemData.price or 0,
+                amount = itemData.amount or 1,
+                requiredLevel = requiredLevel,
+                locked = locked,
+                category = itemData.category or "General"
             }
-        })
+        end
+    end
 
-        lib.showContext("distortionz_main_menu")
+    table.sort(blackMarketItems, function(a, b)
+        if a.requiredLevel == b.requiredLevel then
+            return a.label < b.label
+        end
 
-        SetTimeout(500, function()
-            menuOpen = false
+        return a.requiredLevel < b.requiredLevel
+    end)
+
+    local deliveryReadyText = GetCooldownText(cooldowns, "delivery", "Ready for work.")
+    local sellReadyText = GetCooldownText(cooldowns, "sell", "Ready to sell valuables.")
+    local blackMarketReadyText = GetCooldownText(cooldowns, "blackmarket", "Market is open.")
+
+    if activeDelivery then
+        deliveryReadyText = "Active delivery. Time left: " .. FormatSeconds(GetActiveDeliverySeconds())
+    end
+
+    return {
+        script = {
+            name = Config.Script and Config.Script.name or "Distortionz Underground",
+            version = Config.Script and Config.Script.version or "Unknown",
+            menuVersion = GetMenuVersionText()
+        },
+        rep = {
+            level = repData.level or 0,
+            label = repData.label or "Unknown",
+            value = repData.rep or 0
+        },
+        cooldowns = cooldowns,
+        statusText = {
+            delivery = deliveryReadyText,
+            sell = sellReadyText,
+            blackmarket = blackMarketReadyText
+        },
+        activeDelivery = activeDelivery,
+        delivery = {
+            item = deliveryItem,
+            label = deliveryItemLabel,
+            secondsLeft = GetActiveDeliverySeconds(),
+            difficulty = activeDelivery and "Medium" or "Unknown",
+            payout = activeDelivery and "Pending" or 0
+        },
+        busy = isDoingContactHandoff or isDoingHandoff,
+        sellItems = sellItems,
+        blackMarketItems = blackMarketItems
+    }
+end
+
+local function SendUndergroundPayload(actionName, payload)
+    SendNUIMessage({
+        action = actionName or "setData",
+        payload = payload
+    })
+end
+
+local function RefreshUndergroundUi(actionName)
+    QBCore.Functions.TriggerCallback("distortionz_peds:server:getPlayerRep", function(repData)
+        QBCore.Functions.TriggerCallback("distortionz_peds:server:getSellInventory", function(inventoryCounts)
+            SendUndergroundPayload(actionName or "setData", BuildMenuPayload(repData, inventoryCounts))
         end)
     end)
 end
 
-local function OpenSellMenu()
-    QBCore.Functions.TriggerCallback("distortionz_peds:server:getSellInventory", function(inventoryCounts)
-        local options = {
-            {
-                title = GetMenuVersionText(),
-                description = "Sell valuables, electronics, cards, and rare goods.",
-                icon = "store",
-                disabled = true
-            }
-        }
+local function CloseUndergroundUi()
+    nuiOpen = false
+    SetNuiFocus(false, false)
 
-        for itemName, itemData in pairs(Config.SellItems) do
-            local playerAmount = 0
+    SendNUIMessage({
+        action = "close"
+    })
+end
 
-            if inventoryCounts and inventoryCounts[itemName] then
-                playerAmount = inventoryCounts[itemName]
-            end
+local function OpenIllegalMenu(actionName)
+    if menuOpen or nuiOpen then return end
 
-            options[#options + 1] = {
-                title = itemData.label,
-                description = "You have: " .. playerAmount .. " | $" .. itemData.minPrice .. " - $" .. itemData.maxPrice .. " each",
-                icon = "dollar-sign",
-                disabled = playerAmount <= 0,
-                onSelect = function()
-                    TriggerEvent("distortionz_peds:client:sellItem", {
-                        item = itemName,
-                        amountOwned = playerAmount
-                    })
-                end
-            }
-        end
+    menuOpen = true
+    nuiOpen = true
 
-        options[#options + 1] = {
-            title = "Back",
-            description = "Return to underground contact menu.",
-            icon = "arrow-left",
-            onSelect = function()
-                TriggerEvent("distortionz_peds:client:openIllegalMenu")
-            end
-        }
+    SetNuiFocus(true, true)
+    RefreshUndergroundUi(actionName or "open")
 
-        options[#options + 1] = {
-            title = "Close",
-            description = "Walk away.",
-            icon = "xmark",
-            onSelect = function()
-            end
-        }
-
-        lib.registerContext({
-            id = "distortionz_sell_menu",
-            title = "Mini Market",
-            menu = "distortionz_main_menu",
-            options = options
-        })
-
-        lib.showContext("distortionz_sell_menu")
+    SetTimeout(500, function()
+        menuOpen = false
     end)
 end
 
+local function OpenSellMenu()
+    if not nuiOpen then
+        OpenIllegalMenu("openSell")
+        return
+    end
+
+    RefreshUndergroundUi("openSell")
+end
+
 local function OpenBlackMarket()
-    QBCore.Functions.TriggerCallback("distortionz_peds:server:getPlayerRep", function(repData)
-        repData = repData or { level = 0, label = "Unknown", rep = 0 }
+    if not nuiOpen then
+        OpenIllegalMenu("openBlackMarket")
+        return
+    end
 
-        local options = {
-            {
-                title = "Black Market",
-                description = "Rep: " .. repData.label .. " | Level " .. repData.level,
-                icon = "user-secret",
-                disabled = true
-            }
-        }
+    RefreshUndergroundUi("openBlackMarket")
+end
 
-        for itemName, itemData in pairs(Config.BlackMarket.items) do
-            local locked = repData.level < itemData.requiredLevel
-            local description = "$" .. itemData.price .. " | Required Level: " .. itemData.requiredLevel
+local function RemoveContactTarget()
+    if not contactTargetAdded then return end
 
-            if locked then
-                description = "Locked | Required Level: " .. itemData.requiredLevel
-            end
-
-            options[#options + 1] = {
-                title = itemData.label,
-                description = description,
-                icon = locked and "lock" or "cart-shopping",
-                disabled = locked,
-                onSelect = function()
-                    TriggerServerEvent("distortionz_peds:server:buyBlackMarketItem", itemName)
-                end
-            }
-        end
-
-        options[#options + 1] = {
-            title = "Back",
-            description = "Return to underground contact menu.",
-            icon = "arrow-left",
-            onSelect = function()
-                TriggerEvent("distortionz_peds:client:openIllegalMenu")
-            end
-        }
-
-        options[#options + 1] = {
-            title = "Close",
-            description = "Walk away.",
-            icon = "xmark",
-            onSelect = function()
-            end
-        }
-
-        lib.registerContext({
-            id = "distortionz_black_market",
-            title = "Black Market",
-            menu = "distortionz_main_menu",
-            options = options
+    if spawnedPed and DoesEntityExist(spawnedPed) and GetResourceState("ox_target") == "started" then
+        exports.ox_target:removeLocalEntity(spawnedPed, {
+            "distortionz_peds_underground_contact"
         })
+    end
 
-        lib.showContext("distortionz_black_market")
-    end)
+    contactTargetAdded = false
+end
+
+local function AddContactTarget()
+    if contactTargetAdded then return true end
+    if not spawnedPed or not DoesEntityExist(spawnedPed) then return false end
+
+    local targetConfig = GetTargetConfig()
+
+    if targetConfig.enabled == false then return false end
+
+    if GetResourceState("ox_target") ~= "started" then
+        print("[distortionz_peds] ox_target is not started. Underground Contact target was not added.")
+        return false
+    end
+
+    exports.ox_target:addLocalEntity(spawnedPed, {
+        {
+            name = "distortionz_peds_underground_contact",
+            icon = targetConfig.icon or "fa-solid fa-user-secret",
+            label = targetConfig.label or "Talk to Underground Contact",
+            distance = targetConfig.distance or Config.InteractionDistance or 2.0,
+            canInteract = function()
+                return not isDoingContactHandoff and not isDoingHandoff and not nuiOpen
+            end,
+            onSelect = function()
+                OpenIllegalMenu("open")
+            end
+        }
+    })
+
+    contactTargetAdded = true
+    return true
 end
 
 local function PlayContactHandoffAnimation()
     if isDoingContactHandoff then return false end
     if not spawnedPed or not DoesEntityExist(spawnedPed) then return true end
 
+    local handoffConfig = Config.Delivery.contactHandoff or {}
+
     isDoingContactHandoff = true
 
     local playerPed = PlayerPedId()
-    local animDict = Config.Delivery.contactHandoff.animDict
-    local animName = Config.Delivery.contactHandoff.animName
-    local duration = Config.Delivery.contactHandoff.duration
+    local animDict = handoffConfig.animDict
+    local animName = handoffConfig.animName
+    local duration = tonumber(handoffConfig.duration) or 3000
 
     ClearPedTasks(spawnedPed)
 
@@ -528,7 +715,7 @@ local function PlayContactHandoffAnimation()
     TaskPlayAnim(spawnedPed, animDict, animName, 8.0, -8.0, duration, 0, 0, false, false, false)
     TaskPlayAnim(playerPed, animDict, animName, 8.0, -8.0, duration, 0, 0, false, false, false)
 
-    Notify(Config.Delivery.contactHandoff.text, "primary", duration)
+    Notify(handoffConfig.text or "The contact hands you the package.", "primary", duration)
 
     Wait(duration)
 
@@ -542,76 +729,86 @@ local function PlayContactHandoffAnimation()
     return true
 end
 
-local function StartHandoffAnimation()
-    if isDoingHandoff then return end
-    if not activeDelivery or not deliveryDropoff then return end
+RegisterNUICallback("close", function(_, cb)
+    CloseUndergroundUi()
+    cb({ success = true })
+end)
 
-    isDoingHandoff = true
+RegisterNUICallback("refreshData", function(_, cb)
+    RefreshUndergroundUi("setData")
+    cb({ success = true })
+end)
 
-    local playerPed = PlayerPedId()
-    local animDict = Config.Delivery.handoff.animDict
-    local animName = Config.Delivery.handoff.animName
-    local duration = Config.Delivery.handoff.duration
+RegisterNUICallback("startDelivery", function(_, cb)
+    CloseUndergroundUi()
+    TriggerEvent("distortionz_peds:client:startSuspiciousDelivery")
+    cb({ success = true })
+end)
 
-    if deliveryReceiverPed and DoesEntityExist(deliveryReceiverPed) then
-        ClearPedTasks(deliveryReceiverPed)
+RegisterNUICallback("cancelDelivery", function(_, cb)
+    CloseUndergroundUi()
+    TriggerEvent("distortionz_peds:client:cancelDelivery")
+    cb({ success = true })
+end)
 
-        FaceEntityToEntity(deliveryReceiverPed, playerPed)
-        FaceEntityToEntity(playerPed, deliveryReceiverPed)
+RegisterNUICallback("sellItem", function(data, cb)
+    data = data or {}
 
-        TaskTurnPedToFaceEntity(playerPed, deliveryReceiverPed, 800)
-        TaskTurnPedToFaceEntity(deliveryReceiverPed, playerPed, 800)
+    local itemName = data.item
+    local amount = tonumber(data.amount or 0) or 0
+
+    if not itemName or amount <= 0 then
+        cb({
+            success = false,
+            message = "Invalid sale amount."
+        })
+        return
     end
 
-    Wait(800)
+    amount = math.floor(amount)
 
-    if deliveryReceiverPed and DoesEntityExist(deliveryReceiverPed) then
-        FaceEntityToEntity(deliveryReceiverPed, playerPed)
-        FaceEntityToEntity(playerPed, deliveryReceiverPed)
+    CloseUndergroundUi()
+    TriggerServerEvent("distortionz_peds:server:sellItem", itemName, amount)
+
+    cb({ success = true })
+end)
+
+RegisterNUICallback("buyBlackMarketItem", function(data, cb)
+    data = data or {}
+
+    if not data.item then
+        cb({
+            success = false,
+            message = "Invalid black market item."
+        })
+        return
     end
 
-    LoadAnimDict(animDict)
+    CloseUndergroundUi()
+    TriggerServerEvent("distortionz_peds:server:buyBlackMarketItem", data.item)
 
-    FreezeEntityPosition(playerPed, true)
+    cb({ success = true })
+end)
 
-    if deliveryReceiverPed and DoesEntityExist(deliveryReceiverPed) then
-        TaskPlayAnim(deliveryReceiverPed, animDict, animName, 8.0, -8.0, duration, 0, 0, false, false, false)
-    end
-
-    TaskPlayAnim(playerPed, animDict, animName, 8.0, -8.0, duration, 0, 0, false, false, false)
-
-    Notify(Config.Delivery.handoff.text, "primary", duration)
-
-    Wait(duration)
-
-    ClearPedTasks(playerPed)
-    FreezeEntityPosition(playerPed, false)
-
-    if deliveryReceiverPed and DoesEntityExist(deliveryReceiverPed) then
-        ClearPedTasks(deliveryReceiverPed)
-
-        if Config.Delivery.receiverPed.returnToScenarioAfterHandoff then
-            StartPedScenario(deliveryReceiverPed, Config.Delivery.receiverPed.scenario)
-        end
-    end
-
-    TriggerServerEvent("distortionz_peds:server:completeDelivery")
-end
+RegisterNUICallback("streetWork", function(_, cb)
+    CloseUndergroundUi()
+    TriggerEvent("distortionz_peds:client:streetWork")
+    cb({ success = true })
+end)
 
 CreateThread(function()
     CreateContactBlip()
 
-    LoadModel(Config.Ped.model)
-
+    local model = LoadModel(Config.Ped.model)
     local coords = Config.Ped.coords
 
     spawnedPed = CreatePed(
         4,
-        Config.Ped.model,
+        model,
         coords.x,
         coords.y,
         coords.z - 1.0,
-        coords.w,
+        coords.w or 0.0,
         false,
         true
     )
@@ -620,41 +817,17 @@ CreateThread(function()
     SetBlockingOfNonTemporaryEvents(spawnedPed, true)
     SetPedDiesWhenInjured(spawnedPed, false)
     SetPedCanPlayAmbientAnims(spawnedPed, true)
+    SetPedCanPlayAmbientBaseAnims(spawnedPed, true)
     SetPedCanRagdollFromPlayerImpact(spawnedPed, false)
     SetEntityInvincible(spawnedPed, true)
     FreezeEntityPosition(spawnedPed, true)
 
+    MarkDistortionzPedProtected(spawnedPed, 'distortionz_underground_contact_ped')
+
     StartPedScenario(spawnedPed, Config.Ped.scenario)
+    AddContactTarget()
 
-    SetModelAsNoLongerNeeded(Config.Ped.model)
-end)
-
-CreateThread(function()
-    while true do
-        local sleep = 1000
-        local playerPed = PlayerPedId()
-        local playerCoords = GetEntityCoords(playerPed)
-        local coords = Config.Ped.coords
-        local distance = #(playerCoords - vector3(coords.x, coords.y, coords.z))
-
-        if distance <= Config.DrawDistance then
-            sleep = 0
-
-            if distance <= Config.InteractionDistance then
-                if isDoingContactHandoff then
-                    DrawText3D(coords.x, coords.y, coords.z + 1.0, "Working...")
-                else
-                    DrawText3D(coords.x, coords.y, coords.z + 1.0, "[E] Talk to Underground Contact")
-                end
-
-                if IsControlJustPressed(0, 38) and not isDoingContactHandoff then
-                    OpenIllegalMenu()
-                end
-            end
-        end
-
-        Wait(sleep)
-    end
+    SetModelAsNoLongerNeeded(model)
 end)
 
 CreateThread(function()
@@ -670,7 +843,7 @@ CreateThread(function()
             if distance <= 35.0 then
                 sleep = 0
 
-                if Config.Delivery.marker.enabled then
+                if Config.Delivery.marker and Config.Delivery.marker.enabled then
                     DrawMarker(
                         Config.Delivery.marker.type,
                         deliveryDropoff.x,
@@ -697,19 +870,6 @@ CreateThread(function()
                         nil,
                         false
                     )
-                end
-
-                if distance <= Config.Delivery.completeDistance and not isDoingHandoff then
-                    local textX, textY, textZ = GetDeliveryPromptCoords()
-                    DrawText3D(textX, textY, textZ, "[E] Hand off " .. deliveryItemLabel)
-
-                    if IsControlJustPressed(0, 38) then
-                        if Config.Delivery.handoff.enabled then
-                            StartHandoffAnimation()
-                        else
-                            TriggerServerEvent("distortionz_peds:server:completeDelivery")
-                        end
-                    end
                 end
             end
         end
@@ -748,9 +908,11 @@ end)
 
 CreateThread(function()
     while true do
-        Wait(0)
+        local sleep = 1000
 
         if isDoingHandoff or isDoingContactHandoff then
+            sleep = 0
+
             DisableControlAction(0, 30, true)
             DisableControlAction(0, 31, true)
             DisableControlAction(0, 32, true)
@@ -766,11 +928,13 @@ CreateThread(function()
             DisableControlAction(0, 141, true)
             DisableControlAction(0, 142, true)
         end
+
+        Wait(sleep)
     end
 end)
 
 RegisterNetEvent("distortionz_peds:client:openIllegalMenu", function()
-    OpenIllegalMenu()
+    OpenIllegalMenu("open")
 end)
 
 RegisterNetEvent("distortionz_peds:client:openSellMenu", function()
@@ -845,7 +1009,7 @@ RegisterNetEvent("distortionz_peds:client:startSuspiciousDelivery", function()
         return
     end
 
-    if Config.Delivery.contactHandoff.enabled then
+    if Config.Delivery.contactHandoff and Config.Delivery.contactHandoff.enabled then
         CreateThread(function()
             local finished = PlayContactHandoffAnimation()
 
@@ -885,15 +1049,27 @@ RegisterNetEvent("distortionz_peds:client:deliveryStarted", function(data)
     CreateDeliveryReceiverPed(deliveryDropoff)
 
     Notify("You received a " .. deliveryItemLabel .. ". Deliver it to the GPS location.", "success", 7000)
+
+    if nuiOpen then
+        RefreshUndergroundUi("setData")
+    end
 end)
 
 RegisterNetEvent("distortionz_peds:client:deliveryCompleted", function()
     PlayDeliveryCompleteSound()
     ClearDelivery()
+
+    if nuiOpen then
+        RefreshUndergroundUi("setData")
+    end
 end)
 
 RegisterNetEvent("distortionz_peds:client:deliveryFailed", function()
     ClearDelivery()
+
+    if nuiOpen then
+        RefreshUndergroundUi("setData")
+    end
 end)
 
 RegisterNetEvent("distortionz_peds:client:blackMarketInfo", function()
@@ -930,6 +1106,10 @@ AddEventHandler("onResourceStop", function(resourceName)
         return
     end
 
+    RemoveContactTarget()
+    RemoveDeliveryReceiverTarget()
+    RemoveDeliveryZoneTarget()
+
     if spawnedPed and DoesEntityExist(spawnedPed) then
         DeleteEntity(spawnedPed)
     end
@@ -943,4 +1123,5 @@ AddEventHandler("onResourceStop", function(resourceName)
     end
 
     DeleteDeliveryReceiverPed()
+    CloseUndergroundUi()
 end)

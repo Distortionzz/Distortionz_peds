@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Distortionz Underground</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <main id="app" class="hidden">
+        <section class="shell">
+            <header class="hero">
+                <div>
+                    <p class="eyebrow">Distortionz Underground</p>
+                    <h1 id="uiTitle">Underground Contact</h1>
+                    <p id="uiSubtitle">Illegal services, suspicious work, and black market access.</p>
+                </div>
+
+                <div class="hero-actions">
+                    <button id="refreshBtn" class="icon-btn" title="Refresh">⟳</button>
+                    <button id="closeBtn" class="icon-btn danger" title="Close">×</button>
+                </div>
+            </header>
+
+            <section class="profile-card">
+                <div class="avatar">D</div>
+
+                <div class="profile-main">
+                    <div class="profile-row">
+                        <h2 id="scriptName">Distortionz Underground</h2>
+                        <span id="scriptVersion" class="pill">vUnknown</span>
+                    </div>
+
+                    <p id="repText">Rep: Unknown (0) · Level 0</p>
+
+                    <div class="rep-track">
+                        <div id="repFill" class="rep-fill"></div>
+                    </div>
+
+                    <p id="repNext" class="rep-next">Next Level: 500 rep</p>
+                </div>
+            </section>
+
+            <section class="quick-grid">
+                <button id="sellTabBtn" class="action-card active" data-tab="sell">
+                    <span class="card-icon">💼</span>
+                    <strong>Mini Market</strong>
+                    <small id="sellStatus">Ready to sell valuables.</small>
+                </button>
+
+                <button id="deliveryBtn" class="action-card" data-action="delivery">
+                    <span class="card-icon">📦</span>
+                    <strong>Suspicious Delivery</strong>
+                    <small id="deliveryStatus">Ready for work.</small>
+                </button>
+
+                <button id="cancelDeliveryBtn" class="action-card disabled" data-action="cancel">
+                    <span class="card-icon">🚫</span>
+                    <strong>Cancel Delivery</strong>
+                    <small id="cancelStatus">No active delivery.</small>
+                </button>
+
+                <button id="blackMarketTabBtn" class="action-card" data-tab="blackmarket">
+                    <span class="card-icon">🛒</span>
+                    <strong>Black Market</strong>
+                    <small id="blackMarketStatus">Market is open.</small>
+                </button>
+
+                <button id="streetWorkBtn" class="action-card" data-action="streetwork">
+                    <span class="card-icon">🧭</span>
+                    <strong>Street Work</strong>
+                    <small>More work coming soon.</small>
+                </button>
+            </section>
+
+            <nav class="tabs">
+                <button class="tab active" data-tab="sell">Mini Market</button>
+                <button class="tab" data-tab="blackmarket">Black Market</button>
+                <button class="tab" data-tab="delivery">Delivery Intel</button>
+            </nav>
+
+            <section class="content">
+                <div id="sellPanel" class="panel active">
+                    <div class="panel-head">
+                        <div>
+                            <h3>Sell Valuables</h3>
+                            <p>Pick an item, choose the quantity, and move it quietly.</p>
+                        </div>
+                    </div>
+
+                    <div id="sellItems" class="item-grid"></div>
+                </div>
+
+                <div id="blackmarketPanel" class="panel">
+                    <div class="panel-head">
+                        <div>
+                            <h3>Black Market</h3>
+                            <p>Higher reputation unlocks better gear.</p>
+                        </div>
+                    </div>
+
+                    <div id="blackMarketCategories" class="category-tabs"></div>
+                    <div id="blackMarketItems" class="item-grid"></div>
+                </div>
+
+                <div id="deliveryPanel" class="panel">
+                    <div class="delivery-card">
+                        <span class="large-icon">📦</span>
+                        <h3 id="deliveryTitle">No Active Delivery</h3>
+                        <p id="deliveryInfo">Start a suspicious delivery and follow the GPS drop-off.</p>
+
+                        <div class="delivery-meta">
+                            <div>
+                                <span>Difficulty</span>
+                                <strong id="deliveryDifficulty">Unknown</strong>
+                            </div>
+
+                            <div>
+                                <span>Payout</span>
+                                <strong id="deliveryPayout">$0</strong>
+                            </div>
+
+                            <div>
+                                <span>Status</span>
+                                <strong id="deliveryState">Idle</strong>
+                            </div>
+                        </div>
+
+                        <div class="delivery-actions">
+                            <button id="deliveryStartPanelBtn" class="btn primary">Start Delivery</button>
+                            <button id="deliveryCancelPanelBtn" class="btn ghost">Cancel Delivery</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </section>
+
+        <section id="amountModal" class="modal-overlay hidden">
+            <div class="modal">
+                <div class="modal-head">
+                    <h2 id="amountTitle">Sell Item</h2>
+                    <button id="amountCloseBtn" class="icon-btn danger">×</button>
+                </div>
+
+                <div class="modal-body">
+                    <p id="amountDescription">Choose an amount.</p>
+                    <input id="amountInput" type="number" min="1" value="1">
+                    <button id="confirmSellBtn" class="btn primary">Confirm Sale</button>
+                </div>
+            </div>
+        </section>
+
+        <section id="toast" class="toast hidden"></section>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>

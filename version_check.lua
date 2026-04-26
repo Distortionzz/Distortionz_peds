@@ -1,29 +1,36 @@
-local function trimVersion(version)
+local function TrimVersion(version)
     if not version then return '0.0.0' end
-    version = tostring(version):gsub('^v', ''):gsub('^V', '')
+
+    version = tostring(version)
+    version = version:gsub('^v', '')
+    version = version:gsub('^V', '')
+
     return version
 end
 
-local function splitVersion(version)
+local function SplitVersion(version)
     local parts = {}
-    for part in trimVersion(version):gmatch('[^.]+') do
+
+    for part in TrimVersion(version):gmatch('[^.]+') do
         parts[#parts + 1] = tonumber(part) or 0
     end
+
     return parts
 end
 
-local function isVersionNewer(remote, current)
-    local r = splitVersion(remote)
-    local c = splitVersion(current)
+local function IsVersionNewer(remoteVersion, currentVersion)
+    local remoteParts = SplitVersion(remoteVersion)
+    local currentParts = SplitVersion(currentVersion)
 
-    local maxParts = math.max(#r, #c)
+    local maxParts = math.max(#remoteParts, #currentParts)
+
     for i = 1, maxParts do
-        local rv = r[i] or 0
-        local cv = c[i] or 0
+        local remotePart = remoteParts[i] or 0
+        local currentPart = currentParts[i] or 0
 
-        if rv > cv then
+        if remotePart > currentPart then
             return true
-        elseif rv < cv then
+        elseif remotePart < currentPart then
             return false
         end
     end
@@ -31,7 +38,7 @@ local function isVersionNewer(remote, current)
     return false
 end
 
-local function versionCheck()
+local function VersionCheck()
     if not Config.VersionCheck or not Config.VersionCheck.enabled then
         return
     end
@@ -41,24 +48,25 @@ local function versionCheck()
     local versionUrl = Config.VersionCheck.url
 
     if not versionUrl or versionUrl == '' then
-        print(('^6[%s]^7 ^1Version check failed:^7 missing version URL.'):format(resourceName))
+        print('^1Version check failed:^7 missing version URL.')
         return
     end
 
     PerformHttpRequest(versionUrl, function(statusCode, response)
         if statusCode ~= 200 then
-            print(('^6[%s]^7 ^1Version check failed.^7 HTTP status: ^1%s^7'):format(resourceName, statusCode or 'unknown'))
+            print(('^1Version check failed.^7 HTTP status: ^1%s^7'):format(statusCode or 'unknown'))
             return
         end
 
         if not response or response == '' then
-            print(('^6[%s]^7 ^1Version check failed:^7 empty response body.'):format(resourceName))
+            print('^1Version check failed:^7 empty response body.')
             return
         end
 
         local success, data = pcall(json.decode, response)
+
         if not success or not data then
-            print(('^6[%s]^7 ^1Version check failed:^7 invalid JSON response.'):format(resourceName))
+            print('^1Version check failed:^7 invalid JSON response.')
             return
         end
 
@@ -66,25 +74,25 @@ local function versionCheck()
         local changelog = data.changelog or 'No changelog provided.'
         local download = data.download or 'No download URL provided.'
 
-        if isVersionNewer(latestVersion, currentVersion) then
-            print(('^6[%s]^7 ^1Outdated version detected!^7 Current: ^1v%s^7 | Latest: ^2v%s^7'):format(
-                resourceName, currentVersion, latestVersion
+        if IsVersionNewer(latestVersion, currentVersion) then
+            print('^1============================================================^7')
+            print(('^1Outdated version detected!^7 Current: ^1v%s^7 | Latest: ^2v%s^7'):format(
+                TrimVersion(currentVersion),
+                TrimVersion(latestVersion)
             ))
-            print(('^6[%s]^7 ^1Please update this resource.^7'):format(resourceName))
-            print(('^6[%s]^7 ^3Changelog:^7 %s'):format(resourceName, changelog))
-            print(('^6[%s]^7 ^5Download:^7 %s'):format(resourceName, download))
+            print(('^3Changelog:^7 %s'):format(changelog))
+            print(('^5Download:^7 %s'):format(download))
+            print('^1============================================================^7')
         else
-            print(('^6[%s]^7 ^2You are running the latest version.^7 v%s'):format(
-                resourceName, currentVersion
-            ))
+            print(('^2You are running the latest version.^7 v%s'):format(TrimVersion(currentVersion)))
         end
     end, 'GET')
 end
 
 CreateThread(function()
-    Wait(2000)
+    Wait(2500)
 
     if Config.VersionCheck and Config.VersionCheck.checkOnStart then
-        versionCheck()
+        VersionCheck()
     end
 end)

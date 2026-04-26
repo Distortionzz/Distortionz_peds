@@ -1,6 +1,5 @@
 {
-    "version": "1.3.3",
+    "version": "1.4.1",
     "name": "Distortionz_peds",
-    "download": "https://github.com/Distortionzz/Distortionz_peds",
-    "changelog": "Added GitHub version checking, Qbox/Ox compatibility, Distortionz Notify integration, ox_lib menus and inputs, cooldown display, police alerts, reputation system, and underground delivery system."
+    "changelog": "Underground UI update with premium NUI contact menu, reputation display, item selling interface, black market cards, delivery actions, and refreshed styling."
 }

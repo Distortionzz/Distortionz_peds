@@ -1,10 +1,34 @@
 local QBCore = exports['qb-core']:GetCoreObject()
 
+local PlayerCooldowns = {}
 local ActiveDeliveries = {}
-local Cooldowns = {}
+local SourceKeys = {}
+local LastPoliceAlerts = {}
 
-local function NotifyClient(src, message, notifyType, duration, title, soundEnabled)
-    if not src or not message then return end
+math.randomseed(os.time())
+
+local function DebugPrint(message)
+    if not Config.Debug then return end
+    print(("[distortionz_peds] %s"):format(message))
+end
+
+local function GetPlayer(source)
+    return QBCore.Functions.GetPlayer(source)
+end
+
+local function GetPlayerKey(source)
+    local Player = GetPlayer(source)
+
+    if Player and Player.PlayerData and Player.PlayerData.citizenid then
+        SourceKeys[source] = Player.PlayerData.citizenid
+        return Player.PlayerData.citizenid
+    end
+
+    return SourceKeys[source] or tostring(source)
+end
+
+local function ServerNotify(source, message, notifyType, duration, title)
+    if not source or not message then return end
 
     notifyType = notifyType or "primary"
     duration = tonumber(duration) or 5000
@@ -14,570 +38,897 @@ local function NotifyClient(src, message, notifyType, duration, title, soundEnab
         notifyType = "info"
     end
 
-    if GetResourceState("distortionz_notify") == "started" then
-        TriggerClientEvent("distortionz_notify:client:notify", src, {
+    if GetResourceState("ox_lib") == "started" then
+        TriggerClientEvent("ox_lib:notify", source, {
             title = title,
-            message = message,
+            description = message,
             type = notifyType,
-            duration = duration,
-            sound = soundEnabled
+            duration = duration
         })
         return
     end
 
-    TriggerClientEvent("ox_lib:notify", src, {
-        title = title,
-        description = message,
-        type = notifyType,
-        duration = duration
-    })
+    TriggerClientEvent("QBCore:Notify", source, message, notifyType, duration)
 end
 
-local function GetIdentifier(src)
-    local Player = QBCore.Functions.GetPlayer(src)
+local function IsOxInventoryStarted()
+    return GetResourceState("ox_inventory") == "started"
+end
 
-    if Player and Player.PlayerData and Player.PlayerData.citizenid then
-        return Player.PlayerData.citizenid
+local function GetItemCount(source, itemName)
+    if not source or not itemName then return 0 end
+
+    if IsOxInventoryStarted() then
+        return tonumber(exports.ox_inventory:GetItemCount(source, itemName)) or 0
     end
 
-    return tostring(src)
+    local Player = GetPlayer(source)
+    if not Player then return 0 end
+
+    local item = Player.Functions.GetItemByName(itemName)
+    if not item then return 0 end
+
+    return tonumber(item.amount) or 0
+end
+
+local function CanCarryItem(source, itemName, amount, metadata)
+    if not source or not itemName then return false end
+
+    amount = tonumber(amount) or 1
+    metadata = metadata or {}
+
+    if amount <= 0 then return false end
+
+    if IsOxInventoryStarted() then
+        local success = exports.ox_inventory:CanCarryItem(source, itemName, amount, metadata)
+        return success == true
+    end
+
+    return true
+end
+
+local function AddItem(source, itemName, amount, metadata)
+    if not source or not itemName then return false end
+
+    amount = tonumber(amount) or 1
+    metadata = metadata or {}
+
+    if amount <= 0 then return false end
+
+    if IsOxInventoryStarted() then
+        return exports.ox_inventory:AddItem(source, itemName, amount, metadata) == true
+    end
+
+    local Player = GetPlayer(source)
+    if not Player then return false end
+
+    return Player.Functions.AddItem(itemName, amount, false, metadata) == true
+end
+
+local function RemoveItem(source, itemName, amount, metadata)
+    if not source or not itemName then return false end
+
+    amount = tonumber(amount) or 1
+    metadata = metadata or {}
+
+    if amount <= 0 then return false end
+
+    if IsOxInventoryStarted() then
+        return exports.ox_inventory:RemoveItem(source, itemName, amount, metadata) == true
+    end
+
+    local Player = GetPlayer(source)
+    if not Player then return false end
+
+    return Player.Functions.RemoveItem(itemName, amount) == true
+end
+
+local function AddMoney(source, account, amount, reason)
+    local Player = GetPlayer(source)
+    if not Player then return false end
+
+    amount = tonumber(amount) or 0
+    account = account or "cash"
+    reason = reason or "distortionz-peds"
+
+    if amount <= 0 then return false end
+
+    return Player.Functions.AddMoney(account, amount, reason) == true
+end
+
+local function RemoveMoney(source, account, amount, reason)
+    local Player = GetPlayer(source)
+    if not Player then return false end
+
+    amount = tonumber(amount) or 0
+    account = account or "cash"
+    reason = reason or "distortionz-peds"
+
+    if amount <= 0 then return false end
+
+    local currentMoney = 0
+
+    if Player.PlayerData and Player.PlayerData.money and Player.PlayerData.money[account] then
+        currentMoney = tonumber(Player.PlayerData.money[account]) or 0
+    end
+
+    if currentMoney < amount then
+        return false
+    end
+
+    return Player.Functions.RemoveMoney(account, amount, reason) == true
+end
+
+local function GetStoredRep(Player)
+    if not Player or not Player.PlayerData then return 0 end
+
+    local metadata = Player.PlayerData.metadata or {}
+    local rep = metadata.distortionz_peds_rep or metadata.distortionzRep or 0
+
+    return math.max(0, math.floor(tonumber(rep) or 0))
+end
+
+local function SetStoredRep(Player, rep)
+    if not Player then return end
+
+    rep = math.max(0, math.floor(tonumber(rep) or 0))
+
+    if Player.Functions and Player.Functions.SetMetaData then
+        Player.Functions.SetMetaData("distortionz_peds_rep", rep)
+    end
 end
 
 local function GetRepLevel(rep)
-    local selected = Config.Reputation.levels[1]
+    rep = tonumber(rep) or 0
 
-    for _, data in ipairs(Config.Reputation.levels) do
-        if rep >= data.minRep then
-            selected = data
+    local level = 0
+    local label = "Unknown"
+
+    if Config.Reputation and Config.Reputation.levels then
+        for levelNumber, levelData in pairs(Config.Reputation.levels) do
+            local minRep = tonumber(levelData.minRep) or 0
+
+            if rep >= minRep and tonumber(levelNumber) >= level then
+                level = tonumber(levelNumber)
+                label = levelData.label or label
+            end
         end
+
+        return level, label
     end
 
-    return selected.level, selected.label
+    local pointsPerLevel = Config.Reputation and tonumber(Config.Reputation.pointsPerLevel) or 500
+    level = math.floor(rep / pointsPerLevel)
+
+    return level, label
 end
 
-local function GetPlayerRepData(Player)
-    local metadataName = Config.Reputation.metadataName
-    local metadata = Player.PlayerData.metadata or {}
-    local rep = metadata[metadataName]
+local function GetRepData(source)
+    local Player = GetPlayer(source)
 
-    if type(rep) ~= "number" then
-        rep = 0
+    if not Player then
+        return {
+            level = 0,
+            label = "Unknown",
+            rep = 0,
+            cooldowns = {
+                sell = 0,
+                delivery = 0,
+                blackmarket = 0
+            }
+        }
     end
 
+    local rep = GetStoredRep(Player)
     local level, label = GetRepLevel(rep)
 
     return {
-        rep = rep,
         level = level,
-        label = label
+        label = label,
+        rep = rep,
+        cooldowns = {
+            sell = 0,
+            delivery = 0,
+            blackmarket = 0
+        }
     }
 end
 
-local function AddPlayerRep(Player, amount)
-    if not Config.Reputation.enabled then return end
+local function AddRep(source, amount)
+    if not Config.Reputation or Config.Reputation.enabled == false then return end
 
-    amount = tonumber(amount) or 0
+    amount = math.floor(tonumber(amount) or 0)
+    if amount == 0 then return end
 
-    if amount <= 0 then return end
+    local Player = GetPlayer(source)
+    if not Player then return end
 
-    local current = GetPlayerRepData(Player)
-    local newRep = current.rep + amount
+    local currentRep = GetStoredRep(Player)
+    local newRep = math.max(0, currentRep + amount)
 
-    Player.Functions.SetMetaData(Config.Reputation.metadataName, newRep)
+    SetStoredRep(Player, newRep)
+
+    DebugPrint(("Added %s rep to %s. New rep: %s"):format(amount, source, newRep))
 end
 
-local function HasCooldown(src, name)
-    local identifier = GetIdentifier(src)
-    Cooldowns[identifier] = Cooldowns[identifier] or {}
+local function GetCooldownBucket(source)
+    local key = GetPlayerKey(source)
 
-    local now = os.time()
-    local expires = Cooldowns[identifier][name]
+    PlayerCooldowns[key] = PlayerCooldowns[key] or {
+        sell = 0,
+        delivery = 0,
+        blackmarket = 0
+    }
 
-    if expires and expires > now then
-        return true, expires - now
+    return PlayerCooldowns[key]
+end
+
+local function GetCooldownRemaining(source, cooldownName)
+    local bucket = GetCooldownBucket(source)
+    local expiresAt = tonumber(bucket[cooldownName]) or 0
+    local remaining = expiresAt - os.time()
+
+    if remaining < 0 then
+        remaining = 0
     end
 
-    return false, 0
+    return remaining
 end
 
-local function SetCooldown(src, name, seconds)
-    local identifier = GetIdentifier(src)
-    Cooldowns[identifier] = Cooldowns[identifier] or {}
-    Cooldowns[identifier][name] = os.time() + seconds
+local function SetCooldown(source, cooldownName, seconds)
+    seconds = tonumber(seconds) or 0
+    if seconds <= 0 then return end
+
+    local bucket = GetCooldownBucket(source)
+    bucket[cooldownName] = os.time() + seconds
 end
 
-local function GetCooldowns(src)
-    local deliveryActive, deliveryRemaining = HasCooldown(src, "delivery")
-    local sellActive, sellRemaining = HasCooldown(src, "sell")
-    local blackmarketActive, blackmarketRemaining = HasCooldown(src, "blackmarket")
-
+local function GetAllCooldowns(source)
     return {
-        delivery = deliveryActive and deliveryRemaining or 0,
-        sell = sellActive and sellRemaining or 0,
-        blackmarket = blackmarketActive and blackmarketRemaining or 0
+        sell = GetCooldownRemaining(source, "sell"),
+        delivery = GetCooldownRemaining(source, "delivery"),
+        blackmarket = GetCooldownRemaining(source, "blackmarket")
     }
 end
 
-local function GetRandomDeliveryItem(level)
-    local available = {}
+local function RollChance(chance)
+    chance = tonumber(chance) or 0
 
-    for _, item in ipairs(Config.Delivery.items) do
-        if level >= (item.requiredLevel or 0) then
-            available[#available + 1] = item
-        end
-    end
+    if chance <= 0 then return false end
+    if chance >= 100 then return true end
 
-    if #available < 1 then
-        available = Config.Delivery.items
-    end
-
-    local randomIndex = math.random(1, #available)
-    return available[randomIndex]
+    return math.random(1, 100) <= chance
 end
 
-local function GetRandomDropoff()
-    local randomIndex = math.random(1, #Config.Delivery.dropoffs)
-    return randomIndex, Config.Delivery.dropoffs[randomIndex]
-end
+local function GetSourceCoords(source)
+    local ped = GetPlayerPed(source)
 
-local function ApplyPayoutBonus(baseAmount, level)
-    if not Config.Reputation.enabled then
-        return baseAmount
+    if not ped or ped == 0 then
+        return nil
     end
 
-    local bonus = Config.Reputation.payoutBonusPerLevel or 0.0
-    local multiplier = 1.0 + ((level or 0) * bonus)
+    local coords = GetEntityCoords(ped)
 
-    return math.floor(baseAmount * multiplier)
-end
-
-local function PayPlayer(Player, src, amount, reason)
-    if Config.PayAccount == "markedbills" then
-        Player.Functions.AddItem("markedbills", 1, false, {
-            worth = amount
-        })
-    else
-        Player.Functions.AddMoney(Config.PayAccount, amount, reason)
+    if not coords then
+        return nil
     end
+
+    return vector3(coords.x, coords.y, coords.z)
 end
 
-local function RemoveDeliveryItem(Player, src, itemName)
-    local item = Player.Functions.GetItemByName(itemName)
+local function IsPolicePlayer(Player)
+    if not Player or not Player.PlayerData or not Player.PlayerData.job then return false end
 
-    if item and item.amount > 0 then
-        Player.Functions.RemoveItem(itemName, 1)
-    end
+    local jobName = Player.PlayerData.job.name
+    if not jobName then return false end
+
+    local jobs = Config.PoliceAlerts and Config.PoliceAlerts.jobs or {}
+
+    return jobs[jobName] == true
 end
 
-local function AlertPolice(coords, message)
-    if not Config.PoliceAlerts.enabled then return end
-
-    local players = QBCore.Functions.GetQBPlayers()
-
-    for _, Player in pairs(players) do
-        local job = Player.PlayerData.job
-
-        if job and job.name and Config.PoliceAlerts.jobs[job.name] and job.onduty then
-            local target = Player.PlayerData.source
-
-            NotifyClient(target, message or "Suspicious activity reported.", "police", 7500, "Dispatch")
-            TriggerClientEvent("distortionz_peds:client:createPoliceBlip", target, coords, Config.PoliceAlerts.blip.label)
-        end
-    end
-end
-
-local function TryPoliceAlert(chance, coords, message)
-    if not Config.PoliceAlerts.enabled then return end
+local function SendPoliceAlert(source, alertType, coords, label, chance)
+    if not Config.PoliceAlerts or Config.PoliceAlerts.enabled == false then return end
 
     chance = tonumber(chance) or 0
 
-    if chance <= 0 then return end
-
-    local roll = math.random(1, 100)
-
-    if roll <= chance then
-        AlertPolice(coords, message)
-    end
-end
-
-QBCore.Functions.CreateCallback("distortionz_peds:server:getPlayerRep", function(source, cb)
-    local src = source
-    local Player = QBCore.Functions.GetPlayer(src)
-
-    if not Player then
-        cb({
-            rep = 0,
-            level = 0,
-            label = "Unknown",
-            cooldowns = {
-                delivery = 0,
-                sell = 0,
-                blackmarket = 0
-            }
-        })
+    if not RollChance(chance) then
         return
     end
 
-    local repData = GetPlayerRepData(Player)
-    repData.cooldowns = GetCooldowns(src)
+    local cooldownSeconds = tonumber(Config.PoliceAlerts.cooldownSeconds) or 45
+    local now = os.time()
+    local lastAlert = LastPoliceAlerts[alertType] or 0
+
+    if now - lastAlert < cooldownSeconds then
+        return
+    end
+
+    LastPoliceAlerts[alertType] = now
+
+    coords = coords or GetSourceCoords(source)
+    if not coords then return end
+
+    label = label or Config.PoliceAlerts.blip.label or "Suspicious Activity"
+
+    local players = QBCore.Functions.GetQBPlayers()
+
+    for targetSource, Player in pairs(players) do
+        if IsPolicePlayer(Player) then
+            local playerSource = Player.PlayerData.source or targetSource
+            TriggerClientEvent("distortionz_peds:client:createPoliceBlip", playerSource, coords, label)
+        end
+    end
+end
+
+local function CanReceiveReward(source, amount, forceDirtyMoney)
+    amount = tonumber(amount) or 0
+    if amount <= 0 then return false end
+
+    if forceDirtyMoney == true then
+        local dirtyMoneyItem = Config.Money and Config.Money.dirtyMoneyItem or "black_money"
+        return CanCarryItem(source, dirtyMoneyItem, amount)
+    end
+
+    if Config.Money and Config.Money.rewardType == "item" then
+        local dirtyMoneyItem = Config.Money.dirtyMoneyItem or "black_money"
+        return CanCarryItem(source, dirtyMoneyItem, amount)
+    end
+
+    return true
+end
+
+local function GiveReward(source, amount, reason, forceDirtyMoney)
+    amount = math.floor(tonumber(amount) or 0)
+    if amount <= 0 then return false end
+
+    reason = reason or "distortionz-peds-reward"
+
+    if forceDirtyMoney == true then
+        local dirtyMoneyItem = Config.Money and Config.Money.dirtyMoneyItem or "black_money"
+        return AddItem(source, dirtyMoneyItem, amount)
+    end
+
+    if Config.Money and Config.Money.rewardType == "item" then
+        local dirtyMoneyItem = Config.Money.dirtyMoneyItem or "black_money"
+        return AddItem(source, dirtyMoneyItem, amount)
+    end
+
+    local account = Config.Money and Config.Money.account or "cash"
+    return AddMoney(source, account, amount, reason)
+end
+
+local function RemoveBlackMarketPayment(source, price)
+    price = math.floor(tonumber(price) or 0)
+
+    if price <= 0 then
+        return true
+    end
+
+    local paymentType = Config.Money and Config.Money.blackMarketPaymentType or "cash"
+
+    if paymentType == "item" then
+        local paymentItem = Config.Money.blackMarketPaymentItem or "black_money"
+
+        if GetItemCount(source, paymentItem) < price then
+            return false
+        end
+
+        return RemoveItem(source, paymentItem, price)
+    end
+
+    return RemoveMoney(source, paymentType, price, "distortionz-blackmarket-purchase")
+end
+
+local function GetRandomDeliveryItem()
+    local items = Config.Delivery and Config.Delivery.items or {}
+
+    if not items or #items <= 0 then
+        return {
+            item = "markedbills",
+            label = "Suspicious Package",
+            amount = 1,
+            payoutMin = Config.Delivery.payout.min or 1500,
+            payoutMax = Config.Delivery.payout.max or 3500,
+            difficulty = Config.Delivery.difficulty.label or "Medium"
+        }
+    end
+
+    return items[math.random(1, #items)]
+end
+
+local function GetRandomDropoff()
+    local dropoffs = Config.Delivery and Config.Delivery.dropoffs or {}
+
+    if not dropoffs or #dropoffs <= 0 then
+        return nil
+    end
+
+    return dropoffs[math.random(1, #dropoffs)]
+end
+
+local function GetDeliveryData(source)
+    local key = GetPlayerKey(source)
+    return ActiveDeliveries[key]
+end
+
+local function SetDeliveryData(source, data)
+    local key = GetPlayerKey(source)
+    ActiveDeliveries[key] = data
+end
+
+local function ClearDeliveryData(source)
+    local key = GetPlayerKey(source)
+    ActiveDeliveries[key] = nil
+end
+
+local function FailDelivery(source, reason, removePackage)
+    local delivery = GetDeliveryData(source)
+
+    if not delivery then
+        return
+    end
+
+    if removePackage == true and delivery.packageRemovedOnStart ~= true then
+        if GetItemCount(source, delivery.item) >= delivery.amount then
+            RemoveItem(source, delivery.item, delivery.amount)
+        end
+    end
+
+    ClearDeliveryData(source)
+
+    local losses = Config.Reputation and Config.Reputation.losses or {}
+    AddRep(source, -(losses.deliveryFailed or 0))
+
+    ServerNotify(source, reason or "Delivery failed.", "error", 6000, "Suspicious Delivery")
+    TriggerClientEvent("distortionz_peds:client:deliveryFailed", source)
+end
+
+local function CompleteDelivery(source)
+    local delivery = GetDeliveryData(source)
+
+    if not delivery then
+        ServerNotify(source, "You do not have an active delivery.", "error", 5000, "Suspicious Delivery")
+        return
+    end
+
+    if os.time() >= delivery.expiresAt then
+        FailDelivery(source, "You took too long. Job failed.", Config.Delivery.removePackageOnFail == true)
+        return
+    end
+
+    local sourceCoords = GetSourceCoords(source)
+
+    if not sourceCoords then
+        ServerNotify(source, "Could not verify your location.", "error", 5000, "Suspicious Delivery")
+        return
+    end
+
+    local dropoffCoords = vector3(delivery.dropoff.x, delivery.dropoff.y, delivery.dropoff.z)
+    local distance = #(sourceCoords - dropoffCoords)
+    local allowedDistance = (Config.Delivery.completeDistance or 2.2) + 5.0
+
+    if distance > allowedDistance then
+        ServerNotify(source, "You are too far from the drop-off.", "error", 5000, "Suspicious Delivery")
+        return
+    end
+
+    if delivery.packageRemovedOnStart ~= true then
+        if GetItemCount(source, delivery.item) < delivery.amount then
+            FailDelivery(source, "You lost the package. Job failed.", false)
+            return
+        end
+    end
+
+    local payout = math.random(delivery.payoutMin, delivery.payoutMax)
+    local useDirtyMoney = Config.Delivery.payout and Config.Delivery.payout.useDirtyMoney == true
+
+    if not CanReceiveReward(source, payout, useDirtyMoney) then
+        ServerNotify(source, "You cannot carry the payout.", "error", 5000, "Suspicious Delivery")
+        return
+    end
+
+    if delivery.packageRemovedOnStart ~= true then
+        if not RemoveItem(source, delivery.item, delivery.amount) then
+            ServerNotify(source, "Failed to remove the package.", "error", 5000, "Suspicious Delivery")
+            return
+        end
+    end
+
+    if not GiveReward(source, payout, "distortionz-delivery-payout", useDirtyMoney) then
+        ServerNotify(source, "Failed to pay you.", "error", 5000, "Suspicious Delivery")
+        return
+    end
+
+    ClearDeliveryData(source)
+
+    local gains = Config.Reputation and Config.Reputation.gains or {}
+    AddRep(source, gains.deliveryComplete or 0)
+
+    local alertChance = Config.PoliceAlerts and Config.PoliceAlerts.chances and Config.PoliceAlerts.chances.deliveryComplete or 0
+    local alertMessage = Config.PoliceAlerts and Config.PoliceAlerts.messages and Config.PoliceAlerts.messages.deliveryComplete or "Suspicious handoff reported."
+
+    SendPoliceAlert(source, "deliveryComplete", sourceCoords, alertMessage, alertChance)
+
+    ServerNotify(source, ("Delivery complete. You received $%s."):format(payout), "success", 7000, "Suspicious Delivery")
+    TriggerClientEvent("distortionz_peds:client:deliveryCompleted", source)
+end
+
+QBCore.Functions.CreateCallback("distortionz_peds:server:getPlayerRep", function(source, cb)
+    local repData = GetRepData(source)
+    repData.cooldowns = GetAllCooldowns(source)
 
     cb(repData)
 end)
 
 QBCore.Functions.CreateCallback("distortionz_peds:server:getSellInventory", function(source, cb)
-    local Player = QBCore.Functions.GetPlayer(source)
-    local counts = {}
+    local inventoryCounts = {}
 
-    if not Player then
-        cb(counts)
-        return
+    for itemName, _ in pairs(Config.SellItems or {}) do
+        inventoryCounts[itemName] = GetItemCount(source, itemName)
     end
 
-    for itemName, _ in pairs(Config.SellItems) do
-        local item = Player.Functions.GetItemByName(itemName)
-        counts[itemName] = item and item.amount or 0
-    end
-
-    cb(counts)
+    cb(inventoryCounts)
 end)
 
 QBCore.Functions.CreateCallback("distortionz_peds:server:getItemAmount", function(source, cb, itemName)
-    local Player = QBCore.Functions.GetPlayer(source)
-
-    if not Player then
+    if not itemName then
         cb(0)
         return
     end
 
-    if not itemName or not Config.SellItems[itemName] then
-        cb(0)
-        return
-    end
-
-    local item = Player.Functions.GetItemByName(itemName)
-
-    cb(item and item.amount or 0)
+    cb(GetItemCount(source, itemName))
 end)
 
 RegisterNetEvent("distortionz_peds:server:sellItem", function(itemName, amount)
-    local src = source
-    local Player = QBCore.Functions.GetPlayer(src)
+    local source = source
+    local Player = GetPlayer(source)
 
     if not Player then return end
 
-    local onCooldown, remaining = HasCooldown(src, "sell")
+    amount = math.floor(tonumber(amount) or 0)
 
-    if onCooldown then
-        NotifyClient(src, "Slow down. Wait " .. remaining .. " seconds.", "error", 4000)
+    if not itemName or amount <= 0 then
+        ServerNotify(source, "Invalid sale amount.", "error", 5000)
         return
     end
 
-    local itemData = Config.SellItems[itemName]
+    local itemData = Config.SellItems and Config.SellItems[itemName]
 
     if not itemData then
-        print("[distortionz_peds] Exploit attempt: invalid sell item from " .. src .. " item=" .. tostring(itemName))
-        NotifyClient(src, "This contact is not buying that item.", "error", 5000)
+        ServerNotify(source, "This contact is not buying that item.", "error", 5000)
         return
     end
 
-    amount = tonumber(amount)
+    local cooldown = GetCooldownRemaining(source, "sell")
 
-    if not amount or amount <= 0 then
-        NotifyClient(src, "Invalid amount.", "error", 5000)
+    if cooldown > 0 then
+        ServerNotify(source, ("You need to wait %s seconds before selling again."):format(cooldown), "error", 5000)
         return
     end
 
-    amount = math.floor(amount)
+    local owned = GetItemCount(source, itemName)
 
-    local item = Player.Functions.GetItemByName(itemName)
-
-    if not item or item.amount < amount then
-        NotifyClient(src, "You do not have enough " .. itemData.label .. " to sell.", "error", 5000)
+    if owned < amount then
+        ServerNotify(source, ("You only have %sx %s."):format(owned, itemData.label or itemName), "error", 5000)
         return
     end
 
-    local repData = GetPlayerRepData(Player)
-    local totalPayout = 0
+    local minPrice = tonumber(itemData.minPrice) or 0
+    local maxPrice = tonumber(itemData.maxPrice) or minPrice
 
-    for i = 1, amount do
-        totalPayout = totalPayout + math.random(itemData.minPrice, itemData.maxPrice)
+    if maxPrice < minPrice then
+        maxPrice = minPrice
     end
 
-    totalPayout = ApplyPayoutBonus(totalPayout, repData.level)
+    local priceEach = math.random(minPrice, maxPrice)
+    local payout = priceEach * amount
 
-    Player.Functions.RemoveItem(itemName, amount)
-
-    PayPlayer(Player, src, totalPayout, "sold-underground-market-items")
-    AddPlayerRep(Player, Config.Reputation.gains.sellItem * amount)
-    SetCooldown(src, "sell", Config.Cooldowns.sell)
-
-    if itemData.highValue then
-        local ped = GetPlayerPed(src)
-        local coords = GetEntityCoords(ped)
-        TryPoliceAlert(Config.PoliceAlerts.sellHighValueChance, coords, "Suspicious sale reported.")
+    if not CanReceiveReward(source, payout, false) then
+        ServerNotify(source, "You cannot carry the payout.", "error", 5000)
+        return
     end
 
-    local message = "You sold " .. amount .. "x " .. itemData.label .. " for $" .. totalPayout .. "."
-
-    if Config.PayAccount == "markedbills" then
-        message = "You sold " .. amount .. "x " .. itemData.label .. " for marked bills worth $" .. totalPayout .. "."
+    if not RemoveItem(source, itemName, amount) then
+        ServerNotify(source, "Failed to remove item.", "error", 5000)
+        return
     end
 
-    NotifyClient(src, message, "success", 5000)
+    if not GiveReward(source, payout, "distortionz-sell-payout", false) then
+        ServerNotify(source, "Failed to pay you.", "error", 5000)
+        return
+    end
+
+    local cooldownSeconds = Config.Cooldowns and tonumber(Config.Cooldowns.sell) or 8
+    SetCooldown(source, "sell", cooldownSeconds)
+
+    local gains = Config.Reputation and Config.Reputation.gains or {}
+    local repGain = itemData.highValue and gains.sellHighValue or gains.sellLowValue
+
+    AddRep(source, (repGain or 0) * amount)
+
+    local alertChance = itemData.policeAlertChance
+
+    if not alertChance then
+        if itemData.highValue then
+            alertChance = Config.PoliceAlerts and Config.PoliceAlerts.chances and Config.PoliceAlerts.chances.highValueSell or 0
+        else
+            alertChance = Config.PoliceAlerts and Config.PoliceAlerts.chances and Config.PoliceAlerts.chances.sell or 0
+        end
+    end
+
+    local alertMessage = Config.PoliceAlerts and Config.PoliceAlerts.messages and Config.PoliceAlerts.messages.sell or "Suspicious street sale reported."
+    SendPoliceAlert(source, "sell", GetSourceCoords(source), alertMessage, alertChance)
+
+    ServerNotify(source, ("Sold %sx %s for $%s."):format(amount, itemData.label or itemName, payout), "success", 6000)
 end)
 
 RegisterNetEvent("distortionz_peds:server:buyBlackMarketItem", function(itemName)
-    local src = source
-    local Player = QBCore.Functions.GetPlayer(src)
+    local source = source
+    local Player = GetPlayer(source)
 
     if not Player then return end
 
-    local onCooldown, remaining = HasCooldown(src, "blackmarket")
-
-    if onCooldown then
-        NotifyClient(src, "Wait " .. remaining .. " seconds.", "error", 4000)
+    if not Config.BlackMarket or Config.BlackMarket.enabled == false then
+        ServerNotify(source, "The black market is closed.", "error", 5000, "Black Market")
         return
     end
 
-    if not Config.BlackMarket.enabled then
-        NotifyClient(src, "Black market is closed.", "error", 5000)
+    if not itemName then
+        ServerNotify(source, "Invalid black market item.", "error", 5000, "Black Market")
         return
     end
 
-    local itemData = Config.BlackMarket.items[itemName]
+    local itemData = Config.BlackMarket.items and Config.BlackMarket.items[itemName]
 
     if not itemData then
-        print("[distortionz_peds] Exploit attempt: invalid black market item from " .. src .. " item=" .. tostring(itemName))
-        NotifyClient(src, "That item is not available.", "error", 5000)
+        ServerNotify(source, "That item is not available.", "error", 5000, "Black Market")
         return
     end
 
-    local repData = GetPlayerRepData(Player)
+    local cooldown = GetCooldownRemaining(source, "blackmarket")
 
-    if repData.level < itemData.requiredLevel then
-        NotifyClient(src, "You are not trusted enough.", "error", 5000)
+    if cooldown > 0 then
+        ServerNotify(source, ("You need to wait %s seconds before buying again."):format(cooldown), "error", 5000, "Black Market")
         return
     end
 
-    if Player.PlayerData.money.cash < itemData.price then
-        NotifyClient(src, "You need $" .. itemData.price .. " cash.", "error", 5000)
+    local rep = GetStoredRep(Player)
+    local level = GetRepLevel(rep)
+    local requiredLevel = tonumber(itemData.requiredLevel) or 0
+
+    if level < requiredLevel then
+        ServerNotify(source, ("You need reputation level %s for this item."):format(requiredLevel), "error", 5000, "Black Market")
         return
     end
 
-    if not QBCore.Shared.Items[itemName] then
-        NotifyClient(src, "Missing item in inventory data: " .. itemName, "error", 7000)
+    local amount = tonumber(itemData.amount) or 1
+    local price = tonumber(itemData.price) or 0
+    local metadata = itemData.metadata or {}
+
+    if not CanCarryItem(source, itemName, amount, metadata) then
+        ServerNotify(source, "You cannot carry that item.", "error", 5000, "Black Market")
         return
     end
 
-    Player.Functions.RemoveMoney("cash", itemData.price, "black-market-purchase")
-
-    local added = Player.Functions.AddItem(itemName, itemData.amount)
-
-    if not added then
-        Player.Functions.AddMoney("cash", itemData.price, "black-market-refund")
-        NotifyClient(src, "Not enough inventory space.", "error", 5000)
+    if not RemoveBlackMarketPayment(source, price) then
+        ServerNotify(source, "You do not have enough money.", "error", 5000, "Black Market")
         return
     end
 
-    AddPlayerRep(Player, Config.Reputation.gains.buyBlackMarket)
-    SetCooldown(src, "blackmarket", Config.Cooldowns.blackMarketBuy)
+    if not AddItem(source, itemName, amount, metadata) then
+        ServerNotify(source, "Failed to give item.", "error", 5000, "Black Market")
+        return
+    end
 
-    local ped = GetPlayerPed(src)
-    local coords = GetEntityCoords(ped)
-    TryPoliceAlert(Config.PoliceAlerts.blackMarketBuyChance, coords, "Suspicious black market activity reported.")
+    local cooldownSeconds = Config.Cooldowns and tonumber(Config.Cooldowns.blackmarket) or 15
+    SetCooldown(source, "blackmarket", cooldownSeconds)
 
-    NotifyClient(src, "You bought " .. itemData.amount .. "x " .. itemData.label .. " for $" .. itemData.price .. ".", "success", 5000)
+    local gains = Config.Reputation and Config.Reputation.gains or {}
+    AddRep(source, gains.blackMarketPurchase or 0)
+
+    local alertChance = Config.PoliceAlerts and Config.PoliceAlerts.chances and Config.PoliceAlerts.chances.blackMarket or 0
+    local alertMessage = Config.PoliceAlerts and Config.PoliceAlerts.messages and Config.PoliceAlerts.messages.blackMarket or "Possible illegal transaction reported."
+
+    SendPoliceAlert(source, "blackMarket", GetSourceCoords(source), alertMessage, alertChance)
+
+    ServerNotify(source, ("Purchased %sx %s for $%s."):format(amount, itemData.label or itemName, price), "success", 6000, "Black Market")
 end)
 
 RegisterNetEvent("distortionz_peds:server:startDelivery", function()
-    local src = source
-    local Player = QBCore.Functions.GetPlayer(src)
+    local source = source
+    local Player = GetPlayer(source)
 
     if not Player then return end
 
-    if not Config.Delivery.enabled then
-        NotifyClient(src, "No delivery work is available right now.", "error", 5000)
+    if not Config.Delivery or Config.Delivery.enabled == false then
+        ServerNotify(source, "Delivery work is not available.", "error", 5000, "Suspicious Delivery")
         return
     end
 
-    local onCooldown, remaining = HasCooldown(src, "delivery")
-
-    if onCooldown then
-        NotifyClient(src, "No work right now. Come back in " .. remaining .. " seconds.", "error", 5000)
+    if GetDeliveryData(source) then
+        ServerNotify(source, "You already have an active delivery.", "error", 5000, "Suspicious Delivery")
         return
     end
 
-    if ActiveDeliveries[src] and not Config.Delivery.allowMultipleActiveDeliveries then
-        NotifyClient(src, "You already have an active delivery.", "error", 5000)
+    local cooldown = GetCooldownRemaining(source, "delivery")
+
+    if cooldown > 0 then
+        ServerNotify(source, ("Come back in %s seconds."):format(cooldown), "error", 5000, "Suspicious Delivery")
         return
     end
 
-    local repData = GetPlayerRepData(Player)
-    local deliveryItem = GetRandomDeliveryItem(repData.level)
-    local dropoffIndex, dropoffCoords = GetRandomDropoff()
-    local payout = math.random(deliveryItem.minPay, deliveryItem.maxPay)
-    payout = ApplyPayoutBonus(payout, repData.level)
+    local deliveryItem = GetRandomDeliveryItem()
+    local dropoff = GetRandomDropoff()
 
-    if not QBCore.Shared.Items[deliveryItem.item] then
-        NotifyClient(src, "Delivery item is missing from inventory data: " .. deliveryItem.item, "error", 7000)
+    if not dropoff then
+        ServerNotify(source, "No delivery drop-offs are configured.", "error", 5000, "Suspicious Delivery")
         return
     end
 
-    local added = Player.Functions.AddItem(deliveryItem.item, 1, false, {
-        delivery = true,
-        contact = "underground",
-        dropoff = dropoffIndex
-    })
+    local itemName = deliveryItem.item
+    local itemLabel = deliveryItem.label or itemName
+    local itemAmount = tonumber(deliveryItem.amount) or 1
 
-    if not added then
-        NotifyClient(src, "You do not have enough inventory space.", "error", 5000)
+    if not itemName then
+        ServerNotify(source, "Delivery item is not configured.", "error", 5000, "Suspicious Delivery")
         return
     end
 
-    ActiveDeliveries[src] = {
-        item = deliveryItem.item,
-        label = deliveryItem.label,
-        payout = payout,
-        dropoffIndex = dropoffIndex,
-        dropoff = dropoffCoords,
-        startedAt = os.time(),
-        expiresAt = os.time() + Config.Delivery.timeLimitSeconds
-    }
+    local packageRemovedOnStart = false
 
-    local ped = GetPlayerPed(src)
-    local coords = GetEntityCoords(ped)
-    TryPoliceAlert(Config.PoliceAlerts.startDeliveryChance, coords, "Suspicious package handoff reported.")
+    if Config.Delivery.itemRequired == true then
+        if GetItemCount(source, itemName) < itemAmount then
+            ServerNotify(source, ("You need %sx %s to start this job."):format(itemAmount, itemLabel), "error", 5000, "Suspicious Delivery")
+            return
+        end
 
-    TriggerClientEvent("distortionz_peds:client:deliveryStarted", src, {
-        item = deliveryItem.item,
-        label = deliveryItem.label,
-        dropoff = dropoffCoords,
-        timeLimit = Config.Delivery.timeLimitSeconds
-    })
+        if Config.Delivery.itemRemoveOnStart == true then
+            if not RemoveItem(source, itemName, itemAmount) then
+                ServerNotify(source, "Failed to take the package.", "error", 5000, "Suspicious Delivery")
+                return
+            end
 
-    NotifyClient(src, "The contact says: Take this and do not ask questions.", "primary", 6000)
-end)
+            packageRemovedOnStart = true
+        end
+    else
+        if not CanCarryItem(source, itemName, itemAmount) then
+            ServerNotify(source, "You cannot carry the package.", "error", 5000, "Suspicious Delivery")
+            return
+        end
 
-RegisterNetEvent("distortionz_peds:server:completeDelivery", function()
-    local src = source
-    local Player = QBCore.Functions.GetPlayer(src)
-
-    if not Player then return end
-
-    local delivery = ActiveDeliveries[src]
-
-    if not delivery then
-        NotifyClient(src, "You do not have an active delivery.", "error", 5000)
-        TriggerClientEvent("distortionz_peds:client:deliveryFailed", src)
-        return
-    end
-
-    if delivery.expiresAt and os.time() > delivery.expiresAt then
-        RemoveDeliveryItem(Player, src, delivery.item)
-        ActiveDeliveries[src] = nil
-        SetCooldown(src, "delivery", Config.Cooldowns.delivery)
-
-        NotifyClient(src, "You took too long. Job failed.", "error", 6000)
-        TriggerClientEvent("distortionz_peds:client:deliveryFailed", src)
-        return
-    end
-
-    local ped = GetPlayerPed(src)
-
-    if ped and ped ~= 0 then
-        local playerCoords = GetEntityCoords(ped)
-        local dropCoords = vector3(delivery.dropoff.x, delivery.dropoff.y, delivery.dropoff.z)
-        local distance = #(playerCoords - dropCoords)
-
-        if distance > Config.Delivery.serverCompleteDistance then
-            print("[distortionz_peds] Exploit attempt: delivery complete too far src=" .. src .. " distance=" .. distance)
-            NotifyClient(src, "You are too far from the drop-off.", "error", 5000)
+        if not AddItem(source, itemName, itemAmount) then
+            ServerNotify(source, "Failed to give package.", "error", 5000, "Suspicious Delivery")
             return
         end
     end
 
-    local item = Player.Functions.GetItemByName(delivery.item)
+    local payoutMin = tonumber(deliveryItem.payoutMin) or tonumber(Config.Delivery.payout.min) or 1500
+    local payoutMax = tonumber(deliveryItem.payoutMax) or tonumber(Config.Delivery.payout.max) or payoutMin
 
-    if not item or item.amount < 1 then
-        ActiveDeliveries[src] = nil
-        SetCooldown(src, "delivery", Config.Cooldowns.delivery)
-
-        NotifyClient(src, "You lost the delivery item. Job failed.", "error", 6000)
-        TriggerClientEvent("distortionz_peds:client:deliveryFailed", src)
-        return
+    if payoutMax < payoutMin then
+        payoutMax = payoutMin
     end
 
-    Player.Functions.RemoveItem(delivery.item, 1)
+    local timeLimit = tonumber(Config.Delivery.timeLimitSeconds) or 900
 
-    PayPlayer(Player, src, delivery.payout, "completed-underground-delivery")
-    AddPlayerRep(Player, Config.Reputation.gains.completeDelivery)
-    SetCooldown(src, "delivery", Config.Cooldowns.delivery)
+    SetDeliveryData(source, {
+        item = itemName,
+        label = itemLabel,
+        amount = itemAmount,
+        payoutMin = payoutMin,
+        payoutMax = payoutMax,
+        difficulty = deliveryItem.difficulty or (Config.Delivery.difficulty and Config.Delivery.difficulty.label) or "Medium",
+        dropoff = dropoff,
+        startedAt = os.time(),
+        expiresAt = os.time() + timeLimit,
+        packageRemovedOnStart = packageRemovedOnStart
+    })
 
-    local playerPed = GetPlayerPed(src)
-    local coords = GetEntityCoords(playerPed)
-    TryPoliceAlert(Config.PoliceAlerts.completeDeliveryChance, coords, "Suspicious drop-off reported.")
+    local cooldownSeconds = Config.Cooldowns and tonumber(Config.Cooldowns.delivery) or 180
+    SetCooldown(source, "delivery", cooldownSeconds)
 
-    local message = "Delivery complete. You earned $" .. delivery.payout .. "."
+    local alertChance = Config.PoliceAlerts and Config.PoliceAlerts.chances and Config.PoliceAlerts.chances.deliveryStart or 0
+    local alertMessage = Config.PoliceAlerts and Config.PoliceAlerts.messages and Config.PoliceAlerts.messages.deliveryStart or "Suspicious package movement reported."
 
-    if Config.PayAccount == "markedbills" then
-        message = "Delivery complete. You received marked bills worth $" .. delivery.payout .. "."
-    end
+    SendPoliceAlert(source, "deliveryStart", GetSourceCoords(source), alertMessage, alertChance)
 
-    NotifyClient(src, message, "cash", 7000)
-
-    ActiveDeliveries[src] = nil
-    TriggerClientEvent("distortionz_peds:client:deliveryCompleted", src)
+    TriggerClientEvent("distortionz_peds:client:deliveryStarted", source, {
+        item = itemName,
+        label = itemLabel,
+        amount = itemAmount,
+        dropoff = dropoff,
+        timeLimit = timeLimit,
+        payoutMin = payoutMin,
+        payoutMax = payoutMax,
+        difficulty = deliveryItem.difficulty or (Config.Delivery.difficulty and Config.Delivery.difficulty.label) or "Medium"
+    })
 end)
 
 RegisterNetEvent("distortionz_peds:server:cancelDelivery", function()
-    local src = source
-    local Player = QBCore.Functions.GetPlayer(src)
-
-    if not Player then return end
-
-    local delivery = ActiveDeliveries[src]
+    local source = source
+    local delivery = GetDeliveryData(source)
 
     if not delivery then
-        NotifyClient(src, "You do not have an active delivery.", "error", 5000)
+        ServerNotify(source, "You do not have an active delivery.", "error", 5000, "Suspicious Delivery")
         return
     end
 
-    if Config.Delivery.removeItemOnCancel then
-        RemoveDeliveryItem(Player, src, delivery.item)
+    if Config.Delivery.removePackageOnCancel == true and delivery.packageRemovedOnStart ~= true then
+        if GetItemCount(source, delivery.item) >= delivery.amount then
+            RemoveItem(source, delivery.item, delivery.amount)
+        end
     end
 
-    ActiveDeliveries[src] = nil
-    SetCooldown(src, "delivery", Config.Cooldowns.delivery)
+    ClearDeliveryData(source)
 
-    NotifyClient(src, "You cancelled the delivery.", "warning", 5000)
-    TriggerClientEvent("distortionz_peds:client:deliveryFailed", src)
+    local losses = Config.Reputation and Config.Reputation.losses or {}
+    AddRep(source, -(losses.deliveryCancelled or 0))
+
+    ServerNotify(source, "Delivery cancelled.", "error", 5000, "Suspicious Delivery")
+    TriggerClientEvent("distortionz_peds:client:deliveryFailed", source)
+end)
+
+RegisterNetEvent("distortionz_peds:server:completeDelivery", function()
+    local source = source
+    CompleteDelivery(source)
 end)
 
 RegisterNetEvent("distortionz_peds:server:failDelivery", function(reason)
-    local src = source
-    local Player = QBCore.Functions.GetPlayer(src)
-
-    if not Player then return end
-
-    local delivery = ActiveDeliveries[src]
-
-    if not delivery then return end
-
-    if Config.Delivery.removeItemOnFail then
-        RemoveDeliveryItem(Player, src, delivery.item)
-    end
-
-    ActiveDeliveries[src] = nil
-    SetCooldown(src, "delivery", Config.Cooldowns.delivery)
-
-    NotifyClient(src, reason or "Delivery failed.", "error", 6000)
-    TriggerClientEvent("distortionz_peds:client:deliveryFailed", src)
+    local source = source
+    FailDelivery(source, reason or "Delivery failed.", Config.Delivery.removePackageOnFail == true)
 end)
 
 AddEventHandler("playerDropped", function()
-    local src = source
+    local source = source
+    local key = SourceKeys[source]
 
-    if ActiveDeliveries[src] then
-        ActiveDeliveries[src] = nil
+    if key then
+        ActiveDeliveries[key] = nil
+        SourceKeys[source] = nil
     end
+end)
+
+local function RunVersionCheck()
+    if not Config.Script or Config.Script.versionCheck ~= true then return end
+    if not Config.Script.versionUrl or Config.Script.versionUrl == "" then return end
+
+    PerformHttpRequest(Config.Script.versionUrl, function(statusCode, response)
+        if statusCode ~= 200 or not response then
+            print("[distortionz_peds] Version check failed.")
+            return
+        end
+
+        local success, decoded = pcall(function()
+            return json.decode(response)
+        end)
+
+        if not success or type(decoded) ~= "table" then
+            print("[distortionz_peds] Version check response was invalid.")
+            return
+        end
+
+        local currentVersion = Config.Script.version or "Unknown"
+        local latestVersion = decoded.version or decoded.latest or decoded.tag_name or "Unknown"
+
+        if latestVersion == "Unknown" then
+            print(("[distortionz_peds] Current version: %s"):format(currentVersion))
+            return
+        end
+
+        if latestVersion ~= currentVersion then
+            print(("^3[distortionz_peds]^7 Update available. Current: ^1%s^7 Latest: ^2%s^7"):format(currentVersion, latestVersion))
+
+            if decoded.changelog then
+                print(("^3[distortionz_peds]^7 Changelog: %s"):format(decoded.changelog))
+            end
+        else
+            print(("^2[distortionz_peds]^7 You are running the latest version: %s"):format(currentVersion))
+        end
+    end, "GET")
+end
+
+CreateThread(function()
+    Wait(2500)
+    RunVersionCheck()
 end)

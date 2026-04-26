@@ -1,72 +1,357 @@
 Config = {}
 
+Config.Debug = false
+
 Config.Script = {
     name = "Distortionz Underground",
-    version = "1.3.3"
+    version = "1.4.1",
+    versionCheck = true,
+    versionUrl = "https://raw.githubusercontent.com/distortionz-scripts/distortionz_peds/main/version.json"
 }
 
-Config.VersionCheck = {
-    enabled = true,
-    resourceName = "Distortionz_peds",
-    currentVersion = "1.3.3",
-    githubVersionUrl = "https://raw.githubusercontent.com/Distortionzz/Distortionz_peds/main/version.json"
+Config.Framework = {
+    core = "qb-core",
+    useQboxBridge = true
 }
+
+Config.Inventory = {
+    resource = "ox_inventory"
+}
+
+Config.Money = {
+    rewardType = "item",
+    account = "cash",
+    dirtyMoneyItem = "black_money",
+    blackMarketPaymentType = "cash",
+    blackMarketPaymentItem = "black_money"
+}
+
+Config.InteractionDistance = 2.0
 
 Config.Ped = {
-    model = `a_m_m_skater_01`,
-    coords = vector4(497.94, -629.18, 24.75, 303.06),
+    model = `g_m_m_chigoon_02`,
+    coords = vector4(707.69, -966.93, 30.41, 270.0),
     scenario = "WORLD_HUMAN_SMOKING"
 }
 
 Config.Blip = {
     enabled = true,
-    sprite = 280,
+    sprite = 514,
     color = 1,
-    scale = 0.75,
-    label = "Underground Contact",
-    shortRange = true
+    scale = 0.72,
+    shortRange = true,
+    label = "Underground Contact"
 }
 
-Config.InteractionDistance = 2.0
-Config.DrawDistance = 10.0
+Config.Target = {
+    enabled = true,
+    icon = "fa-solid fa-user-secret",
+    label = "Talk to Underground Contact",
+    distance = 2.0,
 
--- Payment options: "cash", "bank", "markedbills"
-Config.PayAccount = "cash"
+    deliveryIcon = "fa-solid fa-box",
+    deliveryDistance = 2.2
+}
 
 Config.Sounds = {
     deliveryCompleted = {
         enabled = true,
-        soundName = "Text_Arrive_Tone",
-        soundSet = "Phone_SoundSet_Default"
+        soundName = "LOCAL_PLYR_CASH_COUNTER_COMPLETE",
+        soundSet = "DLC_HEISTS_GENERAL_FRONTEND_SOUNDS"
     }
 }
 
 Config.Reputation = {
     enabled = true,
-    metadataName = "undergroundrep",
+    pointsPerLevel = 500,
 
     levels = {
-        { level = 0, label = "Unknown", minRep = 0 },
-        { level = 1, label = "Runner", minRep = 100 },
-        { level = 2, label = "Trusted", minRep = 300 },
-        { level = 3, label = "Plugged In", minRep = 650 },
-        { level = 4, label = "Heavy Mover", minRep = 1100 },
-        { level = 5, label = "Underground VIP", minRep = 1750 }
+        [0] = {
+            label = "Unknown",
+            minRep = 0
+        },
+        [1] = {
+            label = "Runner",
+            minRep = 500
+        },
+        [2] = {
+            label = "Trusted",
+            minRep = 1000
+        },
+        [3] = {
+            label = "Connected",
+            minRep = 1500
+        },
+        [4] = {
+            label = "Plugged In",
+            minRep = 2000
+        },
+        [5] = {
+            label = "Underworld",
+            minRep = 3000
+        }
     },
 
     gains = {
-        sellItem = 2,
-        completeDelivery = 25,
-        buyBlackMarket = 5
+        sellLowValue = 8,
+        sellHighValue = 18,
+        deliveryComplete = 35,
+        blackMarketPurchase = 5
     },
 
-    payoutBonusPerLevel = 0.05
+    losses = {
+        deliveryFailed = 15,
+        deliveryCancelled = 5
+    }
 }
 
 Config.Cooldowns = {
-    delivery = 300,
-    sell = 5,
-    blackMarketBuy = 3
+    sell = 8,
+    delivery = 180,
+    blackmarket = 15
+}
+
+Config.SellItems = {
+    rolex = {
+        label = "Rolex Watch",
+        minPrice = 300,
+        maxPrice = 525,
+        highValue = false,
+        policeAlertChance = 7
+    },
+
+    diamond_ring = {
+        label = "Diamond Ring",
+        minPrice = 650,
+        maxPrice = 1050,
+        highValue = true,
+        policeAlertChance = 14
+    },
+
+    goldchain = {
+        label = "Gold Chain",
+        minPrice = 420,
+        maxPrice = 760,
+        highValue = false,
+        policeAlertChance = 10
+    },
+    ["10kgoldchain"] = {
+        label = "10K Gold Chain",
+        minPrice = 800,
+        maxPrice = 1300,
+        highValue = true,
+        policeAlertChance = 16
+    },
+
+    tablet = {
+        label = "Tablet",
+        minPrice = 180,
+        maxPrice = 340,
+        highValue = false,
+        policeAlertChance = 5
+    },
+
+    laptop = {
+        label = "Laptop",
+        minPrice = 320,
+        maxPrice = 620,
+        highValue = false,
+        policeAlertChance = 8
+    },
+
+    cryptostick = {
+        label = "Crypto Stick",
+        minPrice = 900,
+        maxPrice = 1600,
+        highValue = true,
+        policeAlertChance = 18
+    }
+}
+
+Config.BlackMarket = {
+    enabled = true,
+
+    items = {
+        weapon_pistol = {
+            label = "Pistol",
+            category = "Weapons",
+            price = 15000,
+            amount = 1,
+            requiredLevel = 2,
+            metadata = {}
+        },
+
+        weapon_snspistol = {
+            label = "SNS Pistol",
+            category = "Weapons",
+            price = 9500,
+            amount = 1,
+            requiredLevel = 1,
+            metadata = {}
+        },
+
+        pistol_ammo = {
+            label = "Pistol Ammo",
+            category = "Ammo",
+            price = 650,
+            amount = 3,
+            requiredLevel = 1,
+            metadata = {}
+        },
+
+        armor = {
+            label = "Body Armor",
+            category = "Gear",
+            price = 4500,
+            amount = 1,
+            requiredLevel = 2,
+            metadata = {}
+        },
+
+        lockpick = {
+            label = "Lockpick",
+            category = "Tools",
+            price = 350,
+            amount = 2,
+            requiredLevel = 0,
+            metadata = {}
+        },
+
+        advancedlockpick = {
+            label = "Advanced Lockpick",
+            category = "Tools",
+            price = 1200,
+            amount = 1,
+            requiredLevel = 1,
+            metadata = {}
+        },
+
+        thermite = {
+            label = "Thermite",
+            category = "Tools",
+            price = 2500,
+            amount = 1,
+            requiredLevel = 3,
+            metadata = {}
+        }
+    }
+}
+
+Config.Delivery = {
+    enabled = true,
+    itemRequired = false,
+    itemRemoveOnStart = false,
+    timeLimitSeconds = 900,
+    completeDistance = 2.2,
+    failOnDeath = true,
+    removePackageOnCancel = true,
+    removePackageOnFail = true,
+
+    payout = {
+        min = 1500,
+        max = 3500,
+        useDirtyMoney = true
+    },
+
+    difficulty = {
+        label = "Medium"
+    },
+
+    items = {
+        {
+            item = "markedbills",
+            label = "Suspicious Package",
+            amount = 1,
+            payoutMin = 1500,
+            payoutMax = 3000,
+            difficulty = "Low Risk"
+        },
+        {
+            item = "cryptostick",
+            label = "Encrypted Drive",
+            amount = 1,
+            payoutMin = 2600,
+            payoutMax = 4600,
+            difficulty = "Medium Risk"
+        },
+        {
+            item = "electronickit",
+            label = "Sealed Electronics",
+            amount = 1,
+            payoutMin = 3400,
+            payoutMax = 6200,
+            difficulty = "High Risk"
+        }
+    },
+
+    dropoffs = {
+        vector4(1241.42, -344.41, 69.08, 256.0),
+        vector4(-1156.21, -1567.82, 4.43, 126.0),
+        vector4(334.67, -1978.31, 24.17, 320.0),
+        vector4(-46.02, -1758.94, 29.42, 48.0),
+        vector4(964.22, -1856.89, 31.18, 175.0),
+        vector4(1692.14, 3760.91, 34.70, 225.0),
+        vector4(-3154.13, 1125.54, 20.86, 245.0),
+        vector4(173.41, -1317.89, 29.35, 65.0),
+        vector4(-709.84, -904.21, 19.21, 88.0),
+        vector4(1165.91, -323.54, 69.21, 104.0)
+    },
+
+    receiverPed = {
+        enabled = true,
+        models = {
+            `a_m_m_eastsa_02`,
+            `a_m_m_soucent_03`,
+            `g_m_y_mexgoon_02`,
+            `g_m_y_famdnf_01`,
+            `a_m_y_stwhi_02`
+        },
+        scenario = "WORLD_HUMAN_STAND_IMPATIENT",
+        invincible = true,
+        freeze = true,
+        returnToScenarioAfterHandoff = true
+    },
+
+    blip = {
+        sprite = 501,
+        color = 1,
+        scale = 0.8,
+        label = "Suspicious Drop-Off",
+        usePersonalWaypoint = false, -- false = only use the delivery blip route GPS; no purple personal waypoint
+        clearPersonalWaypointOnStart = true -- clears any old purple waypoint when the delivery starts
+    },
+
+    marker = {
+        enabled = false, -- disabled: removes the floating red marker at the delivery handoff
+        type = 2,
+        scale = {
+            x = 0.35,
+            y = 0.35,
+            z = 0.35
+        },
+        color = {
+            r = 239,
+            g = 68,
+            b = 68,
+            a = 170
+        }
+    },
+
+    contactHandoff = {
+        enabled = true,
+        animDict = "mp_common",
+        animName = "givetake1_a",
+        duration = 2200,
+        text = "The contact quietly hands you the package."
+    },
+
+    handoff = {
+        enabled = true,
+        animDict = "mp_common",
+        animName = "givetake1_a",
+        duration = 2600,
+        text = "Handing off the package..."
+    }
 }
 
 Config.PoliceAlerts = {
@@ -74,141 +359,40 @@ Config.PoliceAlerts = {
 
     jobs = {
         police = true,
-        sheriff = true
+        sheriff = true,
+        state = true
     },
 
-    startDeliveryChance = 10,
-    completeDeliveryChance = 15,
-    sellHighValueChance = 12,
-    blackMarketBuyChance = 8,
+    cooldownSeconds = 45,
+
+    chances = {
+        sell = 10,
+        highValueSell = 18,
+        deliveryStart = 8,
+        deliveryComplete = 14,
+        blackMarket = 5
+    },
+
+    messages = {
+        sell = "Suspicious street sale reported.",
+        deliveryStart = "Suspicious package movement reported.",
+        deliveryComplete = "Suspicious handoff reported.",
+        blackMarket = "Possible illegal weapon transaction reported."
+    },
 
     blip = {
         sprite = 161,
         color = 1,
-        scale = 1.0,
+        scale = 1.15,
         label = "Suspicious Activity",
-        time = 45000
+        time = 60000
     }
 }
 
-Config.SellItems = {
-    rolex = { label = "Golden Watch", minPrice = 300, maxPrice = 650, highValue = true },
-    diamond_ring = { label = "Diamond Ring", minPrice = 450, maxPrice = 900, highValue = true },
-    diamond = { label = "Diamond", minPrice = 550, maxPrice = 1100, highValue = true },
-    goldchain = { label = "Golden Chain", minPrice = 175, maxPrice = 400, highValue = false },
-    tenkgoldchain = { label = "10k Gold Chain", minPrice = 350, maxPrice = 700, highValue = true },
-    goldbar = { label = "Gold Bar", minPrice = 1200, maxPrice = 2500, highValue = true },
-
-    iphone = { label = "iPhone", minPrice = 250, maxPrice = 600, highValue = false },
-    samsungphone = { label = "Samsung S10", minPrice = 200, maxPrice = 500, highValue = false },
-    laptop = { label = "Laptop", minPrice = 350, maxPrice = 800, highValue = true },
-    tablet = { label = "Tablet", minPrice = 200, maxPrice = 500, highValue = false },
-    radioscanner = { label = "Radio Scanner", minPrice = 400, maxPrice = 900, highValue = true },
-    pinger = { label = "Pinger", minPrice = 300, maxPrice = 700, highValue = false },
-    cryptostick = { label = "Crypto Stick", minPrice = 700, maxPrice = 1600, highValue = true },
-
-    bank_card = { label = "Bank Card", minPrice = 75, maxPrice = 160, highValue = false },
-    security_card_01 = { label = "Security Card A", minPrice = 300, maxPrice = 750, highValue = true },
-    security_card_02 = { label = "Security Card B", minPrice = 400, maxPrice = 950, highValue = true }
-}
-
-Config.BlackMarket = {
-    enabled = true,
-
-    items = {
-        lockpick = { label = "Lockpick", price = 250, amount = 1, requiredLevel = 0 },
-        advancedlockpick = { label = "Advanced Lockpick", price = 850, amount = 1, requiredLevel = 1 },
-        phone = { label = "Phone", price = 700, amount = 1, requiredLevel = 1 },
-        radio = { label = "Radio", price = 1200, amount = 1, requiredLevel = 2 },
-        electronickit = { label = "Electronic Kit", price = 1800, amount = 1, requiredLevel = 3 },
-        radioscanner = { label = "Radio Scanner", price = 2500, amount = 1, requiredLevel = 4 }
-    }
-}
-
-Config.Delivery = {
-    enabled = true,
-    allowMultipleActiveDeliveries = false,
-
-    completeDistance = 3.0,
-    serverCompleteDistance = 12.0,
-
-    timeLimitSeconds = 900,
-
-    failOnDeath = true,
-    removeItemOnCancel = true,
-    removeItemOnFail = true,
-
-    marker = {
-        enabled = false,
-        type = 2,
-        scale = vector3(0.25, 0.25, 0.25),
-        color = {
-            r = 255,
-            g = 40,
-            b = 40,
-            a = 140
-        }
-    },
-
-    prompt = {
-        usePedHeadPosition = true,
-        headOffset = 0.18
-    },
-
-    blip = {
-        sprite = 514,
-        color = 1,
-        scale = 0.85,
-        label = "Drop-Off Location",
-        usePersonalWaypoint = false
-    },
-
-    contactHandoff = {
-        enabled = true,
-        duration = 2500,
-        animDict = "mp_common",
-        animName = "givetake1_a",
-        text = "Taking the package..."
-    },
-
-    receiverPed = {
-        enabled = true,
-        models = {
-            `a_m_m_eastsa_02`,
-            `a_m_m_business_01`,
-            `a_m_y_business_02`,
-            `a_m_y_stwhi_02`,
-            `a_m_m_soucent_03`
-        },
-        scenario = "WORLD_HUMAN_STAND_MOBILE",
-        returnToScenarioAfterHandoff = true,
-        freeze = true,
-        invincible = true
-    },
-
-    handoff = {
-        enabled = true,
-        duration = 2500,
-        animDict = "mp_common",
-        animName = "givetake1_a",
-        text = "Handing off package..."
-    },
-
-    items = {
-        { item = "bank_card", label = "Bank Card", minPay = 500, maxPay = 1000, requiredLevel = 0 },
-        { item = "cryptostick", label = "Crypto Stick", minPay = 1200, maxPay = 2400, requiredLevel = 1 },
-        { item = "iphone", label = "iPhone", minPay = 700, maxPay = 1400, requiredLevel = 0 },
-        { item = "laptop", label = "Laptop", minPay = 1300, maxPay = 2800, requiredLevel = 2 },
-        { item = "goldbar", label = "Gold Bar", minPay = 2500, maxPay = 5000, requiredLevel = 4 }
-    },
-
-    dropoffs = {
-        vector4(1138.83, -322.4, 67.15, 7.51),
-        vector4(417.38, -1832.74, 28.28, 293.21),
-        vector4(130.84, -1961.07, 18.49, 227.59),
-        vector4(-1004.81, -1003.13, 2.15, 26.59),
-        vector4(-367.32, 192.51, 83.66, 86.0),
-        vector4(244.96, 11.53, 84.1, 70.1),
-        vector4(813.77, -120.92, 80.23, 343.09)
+Config.Notifications = {
+    titles = {
+        main = "Distortionz Underground",
+        delivery = "Suspicious Delivery",
+        market = "Black Market"
     }
 }
