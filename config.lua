@@ -2,360 +2,203 @@ Config = {}
 
 Config.Debug = false
 
-Config.Script = {
-    name = "Distortionz Underground",
-    version = "1.4.1",
-    versionCheck = true,
-    versionUrl = "https://raw.githubusercontent.com/distortionz-scripts/distortionz_peds/main/version.json"
-}
+Config.ResourceName = 'distortionz_robped'
+Config.CurrentVersion = '1.0.1'
 
-Config.Framework = {
-    core = "qb-core",
-    useQboxBridge = true
-}
-
-Config.Inventory = {
-    resource = "ox_inventory"
-}
-
-Config.Money = {
-    rewardType = "item",
-    account = "cash",
-    dirtyMoneyItem = "black_money",
-    blackMarketPaymentType = "cash",
-    blackMarketPaymentItem = "black_money"
-}
-
-Config.InteractionDistance = 2.0
-
-Config.Ped = {
-    model = `g_m_m_chigoon_02`,
-    coords = vector4(707.69, -966.93, 30.41, 270.0),
-    scenario = "WORLD_HUMAN_SMOKING"
-}
-
-Config.Blip = {
+Config.VersionCheck = {
     enabled = true,
-    sprite = 514,
-    color = 1,
-    scale = 0.72,
-    shortRange = true,
-    label = "Underground Contact"
+    url = 'https://raw.githubusercontent.com/Distortionzz/Distortionz_RobPed/main/version.json',
+    checkOnStart = true
+}
+
+Config.Notify = {
+    title = 'Ped Robbery',
+    useDistortionzNotify = true
 }
 
 Config.Target = {
-    enabled = true,
-    icon = "fa-solid fa-user-secret",
-    label = "Talk to Underground Contact",
-    distance = 2.0,
-
-    deliveryIcon = "fa-solid fa-box",
-    deliveryDistance = 2.2
+    icon = 'fa-solid fa-hand-holding-dollar',
+    label = 'Rob Civilian',
+    distance = 3.5
 }
 
-Config.Sounds = {
-    deliveryCompleted = {
+Config.Robbery = {
+    duration = 8000,
+    cooldown = 90,
+    maxDistance = 4.0,
+
+    requireWeapon = true,
+    allowAnyWeapon = true,
+
+
+    markPedRobbed = true,
+    robbedPedCooldown = 15 * 60,
+
+    allowDeadPeds = false,
+    allowPlayers = false,
+    allowAnimals = false,
+
+    cancelIfPedDies = true,
+    cancelIfPlayerMovesAway = true,
+
+    noRewardChance = 15,
+
+    pedHandsUpTime = 10000,
+    pedFleeAfterRobbery = true,
+    pedFleeChance = 35,
+
+    pedFightBack = true,
+    pedFightBackChance = 10
+}
+
+Config.Protection = {
+    blockProtectedDistortionzPeds = true,
+
+    -- Keep these false so normal ambient/scenario peds can still be robbed.
+    blockFrozenPeds = false,
+    blockInvinciblePeds = false,
+    blockMissionEntities = false,
+
+    blockedStateBags = {
+        'distortionz_protected_ped',
+        'distortionz_contact_ped',
+        'distortionz_underground_contact_ped',
+        'distortionz_delivery_receiver_ped',
+        'distortionz_shop_ped',
+        'distortionz_boss_ped',
+        'distortionz_launder_ped',
+        'distortionz_assassin_boss'
+    }
+}
+
+Config.AllowedWeapons = {
+    -- This list is only used when Config.Robbery.allowAnyWeapon = false.
+    -- With allowAnyWeapon = true, any equipped weapon except unarmed will work.
+
+    -- Pistols
+    'WEAPON_PISTOL',
+    'WEAPON_PISTOL_MK2',
+    'WEAPON_COMBATPISTOL',
+    'WEAPON_APPISTOL',
+    'WEAPON_PISTOL50',
+    'WEAPON_SNSPISTOL',
+    'WEAPON_SNSPISTOL_MK2',
+    'WEAPON_HEAVYPISTOL',
+    'WEAPON_VINTAGEPISTOL',
+    'WEAPON_MARKSMANPISTOL',
+    'WEAPON_REVOLVER',
+    'WEAPON_REVOLVER_MK2',
+    'WEAPON_DOUBLEACTION',
+    'WEAPON_CERAMICPISTOL',
+    'WEAPON_NAVYREVOLVER',
+    'WEAPON_GADGETPISTOL',
+    'WEAPON_STUNGUN',
+    'WEAPON_STUNGUN_MP',
+
+    -- SMGs
+    'WEAPON_MICROSMG',
+    'WEAPON_MINISMG',
+    'WEAPON_SMG',
+    'WEAPON_SMG_MK2',
+    'WEAPON_ASSAULTSMG',
+    'WEAPON_COMBATPDW',
+    'WEAPON_MACHINEPISTOL',
+
+    -- Shotguns
+    'WEAPON_PUMPSHOTGUN',
+    'WEAPON_PUMPSHOTGUN_MK2',
+    'WEAPON_SAWNOFFSHOTGUN',
+    'WEAPON_ASSAULTSHOTGUN',
+    'WEAPON_BULLPUPSHOTGUN',
+    'WEAPON_HEAVYSHOTGUN',
+    'WEAPON_DBSHOTGUN',
+    'WEAPON_AUTOSHOTGUN',
+    'WEAPON_COMBATSHOTGUN',
+
+    -- Rifles
+    'WEAPON_ASSAULTRIFLE',
+    'WEAPON_ASSAULTRIFLE_MK2',
+    'WEAPON_CARBINERIFLE',
+    'WEAPON_CARBINERIFLE_MK2',
+    'WEAPON_ADVANCEDRIFLE',
+    'WEAPON_SPECIALCARBINE',
+    'WEAPON_SPECIALCARBINE_MK2',
+    'WEAPON_BULLPUPRIFLE',
+    'WEAPON_BULLPUPRIFLE_MK2',
+    'WEAPON_COMPACTRIFLE',
+    'WEAPON_MILITARYRIFLE',
+    'WEAPON_HEAVYRIFLE',
+    'WEAPON_TACTICALRIFLE',
+
+    -- Melee
+    'WEAPON_KNIFE',
+    'WEAPON_DAGGER',
+    'WEAPON_BAT',
+    'WEAPON_CROWBAR',
+    'WEAPON_SWITCHBLADE',
+    'WEAPON_MACHETE',
+    'WEAPON_BOTTLE',
+    'WEAPON_HAMMER',
+    'WEAPON_WRENCH',
+    'WEAPON_HATCHET',
+    'WEAPON_BATTLEAXE',
+    'WEAPON_POOLCUE'
+}
+
+Config.BlacklistedPedModels = {
+    -- Police / emergency examples
+    's_m_y_cop_01',
+    's_f_y_cop_01',
+    's_m_y_sheriff_01',
+    's_f_y_sheriff_01',
+    's_m_y_hwaycop_01',
+    's_m_m_paramedic_01',
+    's_m_y_fireman_01',
+
+    -- Common shop / service peds you may not want robbed
+    's_m_m_doctor_01',
+    's_m_m_highsec_01'
+}
+
+Config.BlacklistedPedTypes = {
+    -- Keep this mostly empty unless needed.
+    -- Ped types can vary depending on server/game natives.
+}
+
+Config.Rewards = {
+    cash = {
         enabled = true,
-        soundName = "LOCAL_PLYR_CASH_COUNTER_COMPLETE",
-        soundSet = "DLC_HEISTS_GENERAL_FRONTEND_SOUNDS"
-    }
-}
-
-Config.Reputation = {
-    enabled = true,
-    pointsPerLevel = 500,
-
-    levels = {
-        [0] = {
-            label = "Unknown",
-            minRep = 0
-        },
-        [1] = {
-            label = "Runner",
-            minRep = 500
-        },
-        [2] = {
-            label = "Trusted",
-            minRep = 1000
-        },
-        [3] = {
-            label = "Connected",
-            minRep = 1500
-        },
-        [4] = {
-            label = "Plugged In",
-            minRep = 2000
-        },
-        [5] = {
-            label = "Underworld",
-            minRep = 3000
-        }
+        chance = 70,
+        min = 25,
+        max = 250
     },
 
-    gains = {
-        sellLowValue = 8,
-        sellHighValue = 18,
-        deliveryComplete = 35,
-        blackMarketPurchase = 5
-    },
-
-    losses = {
-        deliveryFailed = 15,
-        deliveryCancelled = 5
-    }
-}
-
-Config.Cooldowns = {
-    sell = 8,
-    delivery = 180,
-    blackmarket = 15
-}
-
-Config.SellItems = {
-    rolex = {
-        label = "Rolex Watch",
-        minPrice = 300,
-        maxPrice = 525,
-        highValue = false,
-        policeAlertChance = 7
-    },
-
-    diamond_ring = {
-        label = "Diamond Ring",
-        minPrice = 650,
-        maxPrice = 1050,
-        highValue = true,
-        policeAlertChance = 14
-    },
-
-    goldchain = {
-        label = "Gold Chain",
-        minPrice = 420,
-        maxPrice = 760,
-        highValue = false,
-        policeAlertChance = 10
-    },
-    ["10kgoldchain"] = {
-        label = "10K Gold Chain",
-        minPrice = 800,
-        maxPrice = 1300,
-        highValue = true,
-        policeAlertChance = 16
-    },
-
-    tablet = {
-        label = "Tablet",
-        minPrice = 180,
-        maxPrice = 340,
-        highValue = false,
-        policeAlertChance = 5
-    },
-
-    laptop = {
-        label = "Laptop",
-        minPrice = 320,
-        maxPrice = 620,
-        highValue = false,
-        policeAlertChance = 8
-    },
-
-    cryptostick = {
-        label = "Crypto Stick",
-        minPrice = 900,
-        maxPrice = 1600,
-        highValue = true,
-        policeAlertChance = 18
-    }
-}
-
-Config.BlackMarket = {
-    enabled = true,
-
-    items = {
-        weapon_pistol = {
-            label = "Pistol",
-            category = "Weapons",
-            price = 15000,
-            amount = 1,
-            requiredLevel = 2,
-            metadata = {}
-        },
-
-        weapon_snspistol = {
-            label = "SNS Pistol",
-            category = "Weapons",
-            price = 9500,
-            amount = 1,
-            requiredLevel = 1,
-            metadata = {}
-        },
-
-        pistol_ammo = {
-            label = "Pistol Ammo",
-            category = "Ammo",
-            price = 650,
-            amount = 3,
-            requiredLevel = 1,
-            metadata = {}
-        },
-
-        armor = {
-            label = "Body Armor",
-            category = "Gear",
-            price = 4500,
-            amount = 1,
-            requiredLevel = 2,
-            metadata = {}
-        },
-
-        lockpick = {
-            label = "Lockpick",
-            category = "Tools",
-            price = 350,
-            amount = 2,
-            requiredLevel = 0,
-            metadata = {}
-        },
-
-        advancedlockpick = {
-            label = "Advanced Lockpick",
-            category = "Tools",
-            price = 1200,
-            amount = 1,
-            requiredLevel = 1,
-            metadata = {}
-        },
-
-        thermite = {
-            label = "Thermite",
-            category = "Tools",
-            price = 2500,
-            amount = 1,
-            requiredLevel = 3,
-            metadata = {}
-        }
-    }
-}
-
-Config.Delivery = {
-    enabled = true,
-    itemRequired = false,
-    itemRemoveOnStart = false,
-    timeLimitSeconds = 900,
-    completeDistance = 2.2,
-    failOnDeath = true,
-    removePackageOnCancel = true,
-    removePackageOnFail = true,
-
-    payout = {
-        min = 1500,
-        max = 3500,
-        useDirtyMoney = true
-    },
-
-    difficulty = {
-        label = "Medium"
+    dirtyMoney = {
+        enabled = true,
+        chance = 35,
+        item = 'black_money',
+        min = 100,
+        max = 750
     },
 
     items = {
-        {
-            item = "markedbills",
-            label = "Suspicious Package",
-            amount = 1,
-            payoutMin = 1500,
-            payoutMax = 3000,
-            difficulty = "Low Risk"
-        },
-        {
-            item = "cryptostick",
-            label = "Encrypted Drive",
-            amount = 1,
-            payoutMin = 2600,
-            payoutMax = 4600,
-            difficulty = "Medium Risk"
-        },
-        {
-            item = "electronickit",
-            label = "Sealed Electronics",
-            amount = 1,
-            payoutMin = 3400,
-            payoutMax = 6200,
-            difficulty = "High Risk"
+        enabled = true,
+        chance = 45,
+
+        pool = {
+            { item = 'phone', min = 1, max = 1, chance = 20 },
+            { item = 'lockpick', min = 1, max = 1, chance = 12 },
+            { item = 'goldchain', min = 1, max = 2, chance = 15 },
+            { item = 'watch', min = 1, max = 1, chance = 18 },
+            { item = 'ring', min = 1, max = 1, chance = 10 },
+            { item = 'lighter', min = 1, max = 1, chance = 25 }
         }
-    },
-
-    dropoffs = {
-        vector4(1241.42, -344.41, 69.08, 256.0),
-        vector4(-1156.21, -1567.82, 4.43, 126.0),
-        vector4(334.67, -1978.31, 24.17, 320.0),
-        vector4(-46.02, -1758.94, 29.42, 48.0),
-        vector4(964.22, -1856.89, 31.18, 175.0),
-        vector4(1692.14, 3760.91, 34.70, 225.0),
-        vector4(-3154.13, 1125.54, 20.86, 245.0),
-        vector4(173.41, -1317.89, 29.35, 65.0),
-        vector4(-709.84, -904.21, 19.21, 88.0),
-        vector4(1165.91, -323.54, 69.21, 104.0)
-    },
-
-    receiverPed = {
-        enabled = true,
-        models = {
-            `a_m_m_eastsa_02`,
-            `a_m_m_soucent_03`,
-            `g_m_y_mexgoon_02`,
-            `g_m_y_famdnf_01`,
-            `a_m_y_stwhi_02`
-        },
-        scenario = "WORLD_HUMAN_STAND_IMPATIENT",
-        invincible = true,
-        freeze = true,
-        returnToScenarioAfterHandoff = true
-    },
-
-    blip = {
-        sprite = 501,
-        color = 1,
-        scale = 0.8,
-        label = "Suspicious Drop-Off",
-        usePersonalWaypoint = false, -- false = only use the delivery blip route GPS; no purple personal waypoint
-        clearPersonalWaypointOnStart = true -- clears any old purple waypoint when the delivery starts
-    },
-
-    marker = {
-        enabled = false, -- disabled: removes the floating red marker at the delivery handoff
-        type = 2,
-        scale = {
-            x = 0.35,
-            y = 0.35,
-            z = 0.35
-        },
-        color = {
-            r = 239,
-            g = 68,
-            b = 68,
-            a = 170
-        }
-    },
-
-    contactHandoff = {
-        enabled = true,
-        animDict = "mp_common",
-        animName = "givetake1_a",
-        duration = 2200,
-        text = "The contact quietly hands you the package."
-    },
-
-    handoff = {
-        enabled = true,
-        animDict = "mp_common",
-        animName = "givetake1_a",
-        duration = 2600,
-        text = "Handing off the package..."
     }
 }
 
-Config.PoliceAlerts = {
+Config.Police = {
     enabled = true,
+    alertChance = 80,
 
     jobs = {
         police = true,
@@ -363,36 +206,23 @@ Config.PoliceAlerts = {
         state = true
     },
 
-    cooldownSeconds = 45,
-
-    chances = {
-        sell = 10,
-        highValueSell = 18,
-        deliveryStart = 8,
-        deliveryComplete = 14,
-        blackMarket = 5
-    },
-
-    messages = {
-        sell = "Suspicious street sale reported.",
-        deliveryStart = "Suspicious package movement reported.",
-        deliveryComplete = "Suspicious handoff reported.",
-        blackMarket = "Possible illegal weapon transaction reported."
-    },
-
-    blip = {
+    alertBlip = {
         sprite = 161,
         color = 1,
-        scale = 1.15,
-        label = "Suspicious Activity",
-        time = 60000
+        scale = 1.1,
+        duration = 60,
+        label = 'Civilian Robbery'
     }
 }
 
-Config.Notifications = {
-    titles = {
-        main = "Distortionz Underground",
-        delivery = "Suspicious Delivery",
-        market = "Black Market"
+Config.Animations = {
+    player = {
+        dict = 'random@shop_robbery',
+        anim = 'robbery_action_b',
+        flag = 49
+    },
+
+    pedHandsUp = {
+        time = 10000
     }
 }
