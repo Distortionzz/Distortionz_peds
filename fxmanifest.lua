@@ -2,27 +2,30 @@ fx_version 'cerulean'
 game 'gta5'
 
 author 'Distortionz'
-description 'Distortionz RobPed - Rob ambient NPC peds for cash, dirty money, or items'
-version '1.0.1'
-
-lua54 'yes'
+description 'Underground contact with illegal market, reputation, deliveries, police alerts, black market, Qbox/Ox support, Distortionz Notify support, and GitHub version checking'
+version '1.4.1'
 
 shared_scripts {
     '@ox_lib/init.lua',
     'config.lua'
 }
 
-client_scripts {
-    'client.lua'
+client_script 'client.lua'
+
+ui_page 'html/index.html'
+
+files {
+    'html/index.html',
+    'html/style.css',
+    'html/app.js'
 }
 
-server_scripts {
-    'server.lua',
-    'version_check.lua'
-}
+server_script 'server.lua'
 
 dependencies {
+    'qb-core',
     'ox_lib',
+    'ox_inventory',
     'ox_target',
-    'ox_inventory'
+    'distortionz_notify'
 }

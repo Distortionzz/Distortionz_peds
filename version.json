@@ -1,6 +1,5 @@
 {
-    "resource": "distortionz_robped",
-    "version": "1.0.1",
-    "changelog": "Weapon detection patch. RobPed now accepts any equipped weapon by default, expands the allowed weapon list, and keeps the target visible on valid civilians.",
-    "download": "https://github.com/Distortionzz/Distortionz_RobPed"
+    "version": "1.4.1",
+    "name": "Distortionz_peds",
+    "changelog": "Underground UI update with premium NUI contact menu, reputation display, item selling interface, black market cards, delivery actions, and refreshed styling."
 }

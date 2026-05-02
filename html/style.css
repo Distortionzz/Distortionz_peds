@@ -225,15 +225,32 @@ input {
 
 .quick-grid {
     grid-area: actions;
-    align-self: start;
+    align-self: stretch;
+    min-height: 0;
     display: grid;
     grid-template-columns: 1fr;
     gap: 10px;
     margin: 0;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.quick-grid::-webkit-scrollbar {
+    width: 6px;
+}
+
+.quick-grid::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 999px;
+}
+
+.quick-grid::-webkit-scrollbar-thumb {
+    background: rgba(251, 113, 133, 0.45);
+    border-radius: 999px;
 }
 
 .action-card {
-    min-height: 96px;
+    min-height: 84px;
     padding: 13px;
     text-align: left;
     border-radius: 18px;
