@@ -1,9 +1,11 @@
 fx_version 'cerulean'
 game 'gta5'
+lua54 'yes'
 
 author 'Distortionz'
 description 'Underground contact with illegal market, reputation, deliveries, police alerts, black market, Qbox/Ox support, Distortionz Notify support, and GitHub version checking'
-version '1.4.1'
+version '1.4.2'
+repository 'https://github.com/Distortionzz/distortionz_peds'
 
 shared_scripts {
     '@ox_lib/init.lua',
@@ -20,7 +22,10 @@ files {
     'html/app.js'
 }
 
-server_script 'server.lua'
+server_scripts {
+    'server.lua',
+    'version_check.lua'
+}
 
 dependencies {
     'qb-core',

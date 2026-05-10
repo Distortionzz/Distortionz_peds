@@ -1,7 +1,13 @@
-# 🚇 Distortionz Underground Contact
+# Distortionz Underground Contact (Peds)
 
-A custom **QBCore FiveM underground contact script** built for roleplay servers.  
-This system adds an illegal contact ped where players can sell valuable items, run suspicious deliveries, build reputation, unlock black market items, and trigger police alerts.
+> Custom Qbox/FiveM underground contact ped — sell valuables, run deliveries, build reputation, unlock black-market items, trigger police alerts.
+
+![FiveM](https://img.shields.io/badge/FiveM-cerulean-yellow?style=flat-square&labelColor=181b20)
+![Qbox](https://img.shields.io/badge/Qbox-required-red?style=flat-square&labelColor=dfb317)
+![License](https://img.shields.io/badge/License-MIT-brightgreen?style=flat-square)
+![Version](https://img.shields.io/github/v/release/Distortionzz/distortionz_peds?style=flat-square&color=d4aa62&label=version)
+
+A custom Qbox/FiveM underground contact script built for roleplay servers. Adds an illegal contact ped where players can sell valuable items, run suspicious deliveries, build reputation, unlock black market items, and trigger police alerts.
 
 ---
 

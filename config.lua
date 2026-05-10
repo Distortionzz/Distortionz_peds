@@ -5,9 +5,15 @@ Config.Debug = false
 Config.Script = {
     name = "Distortionz Underground",
     version = "1.4.1",
-    versionCheck = true,
-    versionUrl = "https://raw.githubusercontent.com/distortionz-scripts/distortionz_peds/main/version.json"
 }
+
+-- ─── Version checker ────────────────────────────────────────────────
+Config.VersionCheck = {
+    enabled      = true,
+    checkOnStart = true,
+    url          = 'https://raw.githubusercontent.com/Distortionzz/distortionz_peds/main/version.json',
+}
+Config.CurrentVersion = '1.4.2'
 
 Config.Framework = {
     core = "qb-core",

@@ -1,5 +1,6 @@
 {
-    "version": "1.4.1",
-    "name": "Distortionz_peds",
-    "changelog": "Underground UI update with premium NUI contact menu, reputation display, item selling interface, black market cards, delivery actions, and refreshed styling."
+    "version": "1.4.2",
+    "name": "distortionz_peds",
+    "download": "https://github.com/Distortionzz/distortionz_peds",
+    "changelog": "v1.4.2 — Standardized README badge block to the new flat-square format with dynamic version pull from GitHub releases. Renamed README header to match the Distortionz convention. v1.4.1 — Underground UI update with premium NUI contact menu, reputation display, item selling interface, black market cards, delivery actions, and refreshed styling."
 }
