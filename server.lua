@@ -945,3 +945,12 @@ CreateThread(function()
     Wait(2500)
     RunVersionCheck()
 end)
+
+CreateThread(function()
+    Wait(1000)
+    print(('^5[distortionz_peds]^7 ^2v%s loaded — blackMarket=%s delivery=%s^7'):format(
+        Config.Script and Config.Script.version or 'Unknown',
+        tostring(Config.BlackMarket and Config.BlackMarket.enabled),
+        tostring(Config.Delivery and Config.Delivery.enabled)
+    ))
+end)
